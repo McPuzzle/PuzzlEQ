@@ -15,8 +15,8 @@ public:
     juce::Colour muted { 0xff8b95a8 };
     juce::Colour accent { 0xff7c5cff };
     juce::Colour curve { 0xff4de3c1 };
-    juce::Colour spectrum { 0x664a5d8a };
-    juce::Colour spectrumPre { 0x3338c9a7 };
+    juce::Colour spectrum { 0xaa3d7fd4 };
+    juce::Colour spectrumPre { 0x5538c9a7 };
     juce::Colour handle { 0xffffc36b };
     juce::Colour danger { 0xffff6b7a };
 

@@ -10,7 +10,7 @@ BottomBar::BottomBar (PuzzlEqAudioProcessor& proc)
     resolution.addItemList (juce::StringArray { "Low", "Medium", "High", "Very High", "Maximum" }, 1);
     character.addItemList (juce::StringArray { "Off", "Gentle", "Warm" }, 1);
     displayRange.addItemList (juce::StringArray { "±3 dB", "±6 dB", "±12 dB", "±30 dB" }, 1);
-    analyzerRange.addItemList (juce::StringArray { "3 dB", "6 dB", "12 dB", "24 dB", "48 dB" }, 1);
+    analyzerRange.addItemList (juce::StringArray { "48 dB", "60 dB", "72 dB", "90 dB", "120 dB" }, 1);
 
     output.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
     output.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 56, 14);

@@ -64,7 +64,7 @@ bool PuzzlEqAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) 
 
 void PuzzlEqAudioProcessor::markLocalEdit()
 {
-    suppressHostPullUntilMs = juce::Time::getMillisecondCounterHiRes() + 1200.0;
+    suppressHostPullUntilMs = juce::Time::getMillisecondCounterHiRes() + 2500.0;
 }
 
 bool PuzzlEqAudioProcessor::shouldPullFromHost() const
@@ -90,13 +90,18 @@ void PuzzlEqAudioProcessor::commitUiBandsToHost()
 
 void PuzzlEqAudioProcessor::pullStateFromApvts()
 {
+    pullStateFromApvts (false);
+}
+
+void PuzzlEqAudioProcessor::pullStateFromApvts (bool allowHostDeactivate)
+{
     for (int i = 0; i < puzzleq::kMaxBands; ++i)
     {
         auto fromHost = puzzleq::readBand (apvts, i);
         auto& local = uiBands[static_cast<size_t> (i)];
-        // FL Studio reverts parameter edits when the mouse button comes up.
-        // Never blank a band the UI still considers active.
-        if (local.active && ! fromHost.active && ! shouldPullFromHost())
+        if (! allowHostDeactivate && local.active && ! fromHost.active)
+            continue;
+        if (! allowHostDeactivate && local.active && ! shouldPullFromHost())
             continue;
         local = fromHost;
     }
@@ -207,7 +212,7 @@ void PuzzlEqAudioProcessor::setStateInformation (const void* data, int sizeInByt
         {
             suppressHostPullUntilMs = 0.0;
             apvts.replaceState (juce::ValueTree::fromXml (*xml));
-            pullStateFromApvts();
+            pullStateFromApvts (true);
         }
 }
 
@@ -283,7 +288,7 @@ void PuzzlEqAudioProcessor::applyFactoryPreset (int index)
     suppressHostPullUntilMs = 0.0;
     puzzleq::applyPreset (apvts, index);
     currentProgram = index;
-    pullStateFromApvts();
+    pullStateFromApvts (true);
 }
 
 void PuzzlEqAudioProcessor::copyBandsFrom (PuzzlEqAudioProcessor& other)

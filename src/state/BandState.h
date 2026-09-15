@@ -46,8 +46,8 @@ struct GlobalState
     bool phaseInvert = false;
     bool pianoRoll = false;
     float analyzerTilt = 4.5f;
-    float analyzerRangeDb = 12.0f;
-    float analyzerSpeed = 0.55f;
+    float analyzerRangeDb = 90.0f;
+    float analyzerSpeed = 0.38f;
     bool analyzerFreeze = false;
     bool analyzerPre = true;
     int soloBand = -1;

@@ -61,6 +61,7 @@ public:
     std::array<puzzleq::BandState, puzzleq::kMaxBands> uiBands {};
     puzzleq::GlobalState uiGlobal {};
     void pullStateFromApvts();
+    void pullStateFromApvts (bool allowHostDeactivate);
     void commitUiBandsToHost();
     void markLocalEdit();
     bool shouldPullFromHost() const;

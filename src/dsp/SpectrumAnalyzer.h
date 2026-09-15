@@ -50,6 +50,7 @@ public:
     }
 
     bool copyCurrent (std::vector<float>& magDbOut, bool pre) const;
+    bool copyPeaks (std::vector<float>& peakDbOut, bool pre) const;
 
 private:
     struct Channel

@@ -54,7 +54,7 @@ void SpectrumAnalyzer::push (const float* left, const float* right, int numSampl
         if (ch.fifoFilled >= n)
         {
             processFifo (ch);
-            ch.fifoFilled = n / 4; // hop ~75% overlap
+            ch.fifoFilled = (n * 3) / 4; // hop n/4 → 75% overlap, ~21 ms at 48 kHz
         }
     }
 }
@@ -87,6 +87,7 @@ void SpectrumAnalyzer::processFifo (Channel& ch)
         const size_t bi = static_cast<size_t> (b);
         const float mag = std::sqrt (re[bi] * re[bi] + im[bi] * im[bi]) / static_cast<float> (n);
         float db = mag > 1.0e-12f ? 20.0f * std::log10 (mag) : -120.0f;
+        db += 6.0f; // Hann coherent-gain compensation so FS sits near 0 dB
         if (b > 0 && tilt != 0.0f)
         {
             const float hz = binToHz (b, n, sr);
@@ -125,6 +126,16 @@ bool SpectrumAnalyzer::copyCurrent (std::vector<float>& magDbOut, bool pre) cons
     if (ch.magSmooth.size() < 8)
         return false;
     magDbOut = ch.magSmooth;
+    return true;
+}
+
+bool SpectrumAnalyzer::copyPeaks (std::vector<float>& peakDbOut, bool pre) const
+{
+    auto& ch = pre ? preCh : postCh;
+    std::lock_guard<std::mutex> lock (ch.mutex);
+    if (ch.peakHold.size() < 8)
+        return false;
+    peakDbOut = ch.peakHold;
     return true;
 }
 

@@ -95,9 +95,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
     addFloat (pid::analyzerTilt, "Analyzer Tilt",
               juce::NormalisableRange<float> (0.0f, 9.0f, 0.1f), 4.5f, "dB/oct");
     addChoice (pid::analyzerRange, "Analyzer Range",
-               juce::StringArray { "3 dB", "6 dB", "12 dB", "24 dB", "48 dB" }, 2);
+               juce::StringArray { "48 dB", "60 dB", "72 dB", "90 dB", "120 dB" }, 3);
     addFloat (pid::analyzerSpeed, "Analyzer Speed",
-              juce::NormalisableRange<float> (0.05f, 1.0f, 0.01f), 0.55f);
+              juce::NormalisableRange<float> (0.05f, 1.0f, 0.01f), 0.38f);
     addBool (pid::analyzerFreeze, "Analyzer Freeze", false);
     addBool (pid::analyzerPre, "Analyzer Pre", false);
     addInt (pid::soloBand, "Solo Band", -1, kMaxBands - 1, -1);
@@ -150,8 +150,8 @@ GlobalState readGlobal (const juce::AudioProcessorValueTreeState& apvts)
     g.pianoRoll      = raw (apvts, pid::pianoRoll, 0.0f) > 0.5f;
     g.analyzerTilt   = raw (apvts, pid::analyzerTilt, 4.5f);
     {
-        const int r = juce::roundToInt (raw (apvts, pid::analyzerRange, 2.0f));
-        constexpr float ranges[] = { 3.f, 6.f, 12.f, 24.f, 48.f };
+        const int r = juce::roundToInt (raw (apvts, pid::analyzerRange, 3.0f));
+        constexpr float ranges[] = { 48.f, 60.f, 72.f, 90.f, 120.f };
         g.analyzerRangeDb = ranges[juce::jlimit (0, 4, r)];
     }
     g.analyzerSpeed  = raw (apvts, pid::analyzerSpeed, 0.55f);
