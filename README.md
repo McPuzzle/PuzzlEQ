@@ -46,7 +46,7 @@ Set-ExecutionPolicy -Scope Process Bypass
 .\scripts\build-and-install-windows.ps1
 ```
 
-That compiles with Visual Studio and copies into `C:\Program Files\Common Files\VST3` (UAC prompt). Then rescan the DAW. After a Windows build, `scripts\package-windows.sh` makes `dist\PuzzlEQ-Install-Windows.zip` — double-click **Install-PuzzlEQ.bat**. Optional GUI setup: compile `installer/windows/PuzzlEQ.iss` with Inno Setup.
+That compiles with Visual Studio and copies into `C:\Program Files\Common Files\VST3` (UAC prompt). Then rescan the DAW. After a Windows build, `scripts\package-windows.sh` makes `dist\PuzzlEQ-Install-Windows.zip`. Unzip it, fully quit the DAW, double-click **Uninstall-PuzzlEQ.bat**, then **Install-PuzzlEQ.bat**, then rescan. Optional GUI setup: compile `installer/windows/PuzzlEQ.iss` with Inno Setup.
 
 ### Linux
 

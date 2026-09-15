@@ -32,6 +32,9 @@ It builds with Visual Studio, asks for administrator permission, then copies int
 
 Needs Git, CMake, and Visual Studio 2022 with C++. Then rescan the DAW.
 
+From a GitHub Windows zip: fully quit the DAW, double-click Uninstall-PuzzlEQ.bat,
+then Install-PuzzlEQ.bat, then rescan plugins.
+
 Ready-made installers
 ---------------------
 These can only be packed on the matching OS (or GitHub Actions):

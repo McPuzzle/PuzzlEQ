@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Pack Windows Release artefacts into a double-click installer folder/zip.
-# Run this on Windows (Git Bash) after a Windows build — Linux .so files will not work.
+# Run this on Windows (Git Bash) after a Windows build. Linux .so files will not work.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -10,7 +10,7 @@ OUT="${1:-${ROOT}/dist}"
 
 VST3="${ART}/VST3/PuzzlEQ.vst3"
 if [[ ! -e "$VST3" ]]; then
-    echo "Missing $VST3 — build PuzzlEQ_VST3 on Windows first." >&2
+    echo "Missing $VST3 - build PuzzlEQ_VST3 on Windows first." >&2
     exit 1
 fi
 
@@ -30,13 +30,14 @@ if [[ -f "${ART}/Standalone/PuzzlEQ.exe" ]]; then
 fi
 
 cp -a "${ROOT}/scripts/install-windows.ps1" "$STAGE/"
+cp -a "${ROOT}/scripts/uninstall-windows.ps1" "$STAGE/"
 cp -a "${ROOT}/scripts/Install-PuzzlEQ.bat" "$STAGE/"
 cp -a "${ROOT}/scripts/Uninstall-PuzzlEQ.bat" "$STAGE/"
 cp -a "${ROOT}/LICENSE" "$STAGE/"
 cp -a "${ROOT}/VERSION" "$STAGE/"
 
 cat > "$STAGE/README.txt" <<EOF
-PuzzlEQ v${VERSION} — Windows installer
+PuzzlEQ v${VERSION} - Windows installer
 =======================================
 
 Install:      double-click  Install-PuzzlEQ.bat

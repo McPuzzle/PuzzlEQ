@@ -10,6 +10,35 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Parse-check Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $files = @(
+            "scripts\install-windows.ps1",
+            "scripts\uninstall-windows.ps1",
+            "scripts\build-and-install-windows.ps1"
+          )
+          $failed = $false
+          foreach ($f in $files) {
+            $tok = $null
+            $errs = $null
+            $null = [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f), [ref]$tok, [ref]$errs)
+            if ($errs -and $errs.Count -gt 0) {
+              Write-Host "PARSE FAIL $f"
+              $errs | ForEach-Object { Write-Host ("  " + $_.ToString()) }
+              $failed = $true
+            } else {
+              Write-Host "PARSE OK $f"
+            }
+            $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path $f))
+            $non = 0
+            foreach ($b in $bytes) { if ($b -gt 127) { $non++ } }
+            if ($non -gt 0) {
+              Write-Host "NON-ASCII $f ($non bytes) - Windows PowerShell 5.1 may misread this as quotes"
+              $failed = $true
+            }
+          }
+          if ($failed) { exit 1 }
       - name: Fetch JUCE + CLAP
         shell: bash
         run: ./scripts/fetch-deps.sh
