@@ -55,17 +55,30 @@ fi
 remove_one() {
     local path="$1"
     if [[ -e "$path" || -L "$path" ]]; then
-        rm -rf "$path"
-        echo "  removed $path"
+        if rm -rf "$path" 2>/dev/null; then
+            echo "  removed $path"
+        else
+            echo "  needs root to remove $path"
+        fi
     fi
 }
 
 if [[ "$DO_UNINSTALL" -eq 1 ]]; then
-    echo "Uninstalling PuzzlEQ ($MODE)..."
-    remove_one "${VST3_DIR}/PuzzlEQ.vst3"
-    remove_one "${CLAP_DIR}/PuzzlEQ.clap"
-    remove_one "${BIN_DIR}/PuzzlEQ"
-    remove_one "${APP_DIR}/puzzleq.desktop"
+    echo "Removing previous PuzzlEQ versions..."
+    remove_one "${HOME}/.vst3/PuzzlEQ.vst3"
+    remove_one "${HOME}/.clap/PuzzlEQ.clap"
+    remove_one "${HOME}/.local/bin/PuzzlEQ"
+    remove_one "${HOME}/.local/share/applications/puzzleq.desktop"
+    remove_one "/usr/lib/vst3/PuzzlEQ.vst3"
+    remove_one "/usr/lib/clap/PuzzlEQ.clap"
+    remove_one "/usr/local/bin/PuzzlEQ"
+    remove_one "/usr/share/applications/puzzleq.desktop"
+    if [[ "$(id -u)" -ne 0 ]]; then
+        if [[ -e "/usr/lib/vst3/PuzzlEQ.vst3" || -e "/usr/lib/clap/PuzzlEQ.clap" || -e "/usr/local/bin/PuzzlEQ" ]]; then
+            echo "System copies need root. Re-running with sudo..."
+            exec sudo -- "$0" --uninstall
+        fi
+    fi
     echo "Done."
     exit 0
 fi

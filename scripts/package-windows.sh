@@ -31,22 +31,27 @@ fi
 
 cp -a "${ROOT}/scripts/install-windows.ps1" "$STAGE/"
 cp -a "${ROOT}/scripts/Install-PuzzlEQ.bat" "$STAGE/"
+cp -a "${ROOT}/scripts/Uninstall-PuzzlEQ.bat" "$STAGE/"
 cp -a "${ROOT}/LICENSE" "$STAGE/"
+cp -a "${ROOT}/VERSION" "$STAGE/"
 
 cat > "$STAGE/README.txt" <<EOF
 PuzzlEQ v${VERSION} — Windows installer
 =======================================
 
-Double-click  Install-PuzzlEQ.bat
+Install:      double-click  Install-PuzzlEQ.bat
+Uninstall:    double-click  Uninstall-PuzzlEQ.bat
 
-Windows will ask for administrator permission, then copy the plugin into:
+The uninstaller removes every previous PuzzlEQ copy it can find:
   C:\\Program Files\\Common Files\\VST3\\PuzzlEQ.vst3
   C:\\Program Files\\Common Files\\CLAP\\PuzzlEQ.clap
+  C:\\Program Files\\PuzzlEQ
+  per-user copies under %LOCALAPPDATA%
+  leftover files in Image-Line / FL Studio plugin folders
 
-Rescan plugins in your DAW. Do not drag the files into a VST folder yourself.
+Then fully quit the DAW and rescan plugins.
 
-Per-user (no admin):  powershell -ExecutionPolicy Bypass -File install-windows.ps1 -User
-Uninstall:            Install-PuzzlEQ.bat -Uninstall
+Per-user install (no admin):  powershell -ExecutionPolicy Bypass -File install-windows.ps1 -User
 EOF
 
 mkdir -p "$OUT"

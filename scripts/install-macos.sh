@@ -53,18 +53,37 @@ CLAP_DIR="${PLUG_ROOT}/CLAP"
 remove_one() {
     local path="$1"
     if [[ -e "$path" || -L "$path" ]]; then
-        rm -rf "$path"
-        echo "  removed $path"
+        if rm -rf "$path" 2>/dev/null; then
+            echo "  removed $path"
+        else
+            echo "  needs admin to remove $path"
+        fi
     fi
 }
 
 if [[ "$DO_UNINSTALL" -eq 1 ]]; then
-    echo "Uninstalling PuzzlEQ ($MODE)..."
-    remove_one "${VST3_DIR}/PuzzlEQ.vst3"
-    remove_one "${AU_DIR}/PuzzlEQ.component"
-    remove_one "${CLAP_DIR}/PuzzlEQ.clap"
-    remove_one "${APP_DIR}/PuzzlEQ.app"
-    echo "Done. Rescan plugins in your DAW."
+    echo "Removing previous PuzzlEQ versions from user and system plugin folders..."
+    remove_one "${HOME}/Library/Audio/Plug-Ins/VST3/PuzzlEQ.vst3"
+    remove_one "${HOME}/Library/Audio/Plug-Ins/Components/PuzzlEQ.component"
+    remove_one "${HOME}/Library/Audio/Plug-Ins/CLAP/PuzzlEQ.clap"
+    remove_one "${HOME}/Applications/PuzzlEQ.app"
+    remove_one "/Library/Audio/Plug-Ins/VST3/PuzzlEQ.vst3"
+    remove_one "/Library/Audio/Plug-Ins/Components/PuzzlEQ.component"
+    remove_one "/Library/Audio/Plug-Ins/CLAP/PuzzlEQ.clap"
+    remove_one "/Applications/PuzzlEQ.app"
+    if [[ "$(id -u)" -ne 0 ]]; then
+        if [[ -e "/Library/Audio/Plug-Ins/VST3/PuzzlEQ.vst3" \
+           || -e "/Library/Audio/Plug-Ins/Components/PuzzlEQ.component" \
+           || -e "/Library/Audio/Plug-Ins/CLAP/PuzzlEQ.clap" \
+           || -e "/Applications/PuzzlEQ.app" ]]; then
+            echo "System copies need admin. Re-running with sudo..."
+            exec sudo -- "$0" --uninstall
+        fi
+    fi
+    if command -v killall >/dev/null 2>&1; then
+        killall -9 AudioComponentRegistrar >/dev/null 2>&1 || true
+    fi
+    echo "Done. Fully quit your DAW and rescan plugins."
     exit 0
 fi
 
@@ -126,6 +145,18 @@ fi
 
 mkdir -p "$VST3_DIR" "$AU_DIR" "$CLAP_DIR" "$APP_DIR"
 
+echo "Clearing leftover PuzzlEQ copies..."
+remove_one "${HOME}/Library/Audio/Plug-Ins/VST3/PuzzlEQ.vst3"
+remove_one "${HOME}/Library/Audio/Plug-Ins/Components/PuzzlEQ.component"
+remove_one "${HOME}/Library/Audio/Plug-Ins/CLAP/PuzzlEQ.clap"
+remove_one "${HOME}/Applications/PuzzlEQ.app"
+if [[ "$MODE" == "system" || "$(id -u)" -eq 0 ]]; then
+    remove_one "/Library/Audio/Plug-Ins/VST3/PuzzlEQ.vst3"
+    remove_one "/Library/Audio/Plug-Ins/Components/PuzzlEQ.component"
+    remove_one "/Library/Audio/Plug-Ins/CLAP/PuzzlEQ.clap"
+    remove_one "/Applications/PuzzlEQ.app"
+fi
+
 echo "Installing PuzzlEQ ($MODE)..."
 rm -rf "${VST3_DIR}/PuzzlEQ.vst3"
 cp -a "$SRC_VST3" "${VST3_DIR}/PuzzlEQ.vst3"
@@ -156,4 +187,4 @@ fi
 
 echo
 echo "PuzzlEQ is installed. Rescan plugins in Logic, Ableton, Reaper, or Bitwig."
-echo "Uninstall: $0 --uninstall"
+echo "Uninstall: double-click Uninstall-PuzzlEQ.command  (or $0 --uninstall)"

@@ -23,8 +23,9 @@ cp -a "${ART}/VST3/PuzzlEQ.vst3" "$STAGE/"
 
 cp -a "${ROOT}/scripts/install-macos.sh" "$STAGE/"
 cp -a "${ROOT}/scripts/Install-PuzzlEQ.command" "$STAGE/"
+cp -a "${ROOT}/scripts/Uninstall-PuzzlEQ.command" "$STAGE/"
 cp -a "${ROOT}/LICENSE" "$STAGE/"
-chmod 755 "$STAGE/install-macos.sh" "$STAGE/Install-PuzzlEQ.command"
+chmod 755 "$STAGE/install-macos.sh" "$STAGE/Install-PuzzlEQ.command" "$STAGE/Uninstall-PuzzlEQ.command"
 
 # Finder often needs this so .command is executable after unzip.
 if command -v xattr >/dev/null 2>&1; then
@@ -45,7 +46,8 @@ That copies the plugin into:
 Then rescan plugins (Logic: restart Logic). No dragging into a VST folder.
 
 If macOS blocks the .command: right-click → Open.
-Uninstall:  ./install-macos.sh --uninstall
+Uninstall:  double-click Uninstall-PuzzlEQ.command
+            (removes user and system copies from previous versions)
 EOF
 
 mkdir -p "$OUT"
