@@ -23,6 +23,7 @@ void SpectrumAnalyzer::prepare (float sampleRate, int fftSize)
         ch.fifoWrite = 0;
         ch.fifoFilled = 0;
         ch.magSmooth.assign (static_cast<size_t> (n / 2 + 1), -90.0f);
+        ch.peakHold.assign (static_cast<size_t> (n / 2 + 1), -90.0f);
         ch.ready = false;
     };
     setupCh (preCh);
@@ -76,18 +77,23 @@ void SpectrumAnalyzer::processFifo (Channel& ch)
 
     std::lock_guard<std::mutex> lock (ch.mutex);
     if (static_cast<int> (ch.magSmooth.size()) != bins)
+    {
         ch.magSmooth.assign (static_cast<size_t> (bins), -90.0f);
+        ch.peakHold.assign (static_cast<size_t> (bins), -90.0f);
+    }
 
     for (int b = 0; b < bins; ++b)
     {
-        const float mag = std::sqrt (re[b] * re[b] + im[b] * im[b]) / static_cast<float> (n);
+        const size_t bi = static_cast<size_t> (b);
+        const float mag = std::sqrt (re[bi] * re[bi] + im[bi] * im[bi]) / static_cast<float> (n);
         float db = mag > 1.0e-12f ? 20.0f * std::log10 (mag) : -120.0f;
         if (b > 0 && tilt != 0.0f)
         {
             const float hz = binToHz (b, n, sr);
             db += tilt * std::log2 (std::max (hz, 20.0f) / 1000.0f);
         }
-        ch.magSmooth[static_cast<size_t> (b)] = a * ch.magSmooth[static_cast<size_t> (b)] + (1.0f - a) * db;
+        ch.magSmooth[bi] = a * ch.magSmooth[bi] + (1.0f - a) * db;
+        ch.peakHold[bi] = std::max (ch.peakHold[bi] * 0.985f, ch.magSmooth[bi]);
     }
     ch.ready = true;
 }
@@ -99,6 +105,16 @@ bool SpectrumAnalyzer::consume (std::vector<float>& magDbOut, bool pre)
         return false;
     std::lock_guard<std::mutex> lock (ch.mutex);
     magDbOut = ch.magSmooth;
+    return true;
+}
+
+bool SpectrumAnalyzer::consumePeaks (std::vector<float>& peakDbOut, bool pre)
+{
+    auto& ch = pre ? preCh : postCh;
+    if (! ch.ready.load())
+        return false;
+    std::lock_guard<std::mutex> lock (ch.mutex);
+    peakDbOut = ch.peakHold;
     return true;
 }
 

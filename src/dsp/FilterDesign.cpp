@@ -66,7 +66,7 @@ BiquadCoeffs firstOrderLowShelf (double hz, double gainDb, double fs)
     return normalise (b0, b1, 0.0, a0, a1, 0.0);
 }
 
-BiquadCoeffs firstOrderHighShelf (double hz, double gainDb, double fs)
+[[maybe_unused]] BiquadCoeffs firstOrderHighShelf (double hz, double gainDb, double fs)
 {
     const double f = clampFreq (hz, fs);
     const double A = std::pow (10.0, gainDb / 40.0);

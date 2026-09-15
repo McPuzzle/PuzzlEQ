@@ -42,12 +42,18 @@ private:
     void showValueEditor (int band, juce::Point<int> at);
     void paintGrid (juce::Graphics& g, juce::Rectangle<float> r);
     void paintPiano (juce::Graphics& g, juce::Rectangle<float> r);
-    void paintSpectrum (juce::Graphics& g, juce::Rectangle<float> r, const std::vector<float>& mag, juce::Colour c);
+    void paintSpectrum (juce::Graphics& g, juce::Rectangle<float> r, const std::vector<float>& mag,
+                        juce::Colour c, bool fromBottom);
+    void paintSpectrumLine (juce::Graphics& g, juce::Rectangle<float> r, const std::vector<float>& mag, juce::Colour c);
+    void paintCollision (juce::Graphics& g, juce::Rectangle<float> r);
     void paintCurve (juce::Graphics& g, juce::Rectangle<float> r);
+    void paintBandGhost (juce::Graphics& g, juce::Rectangle<float> r, int band);
     void paintHandles (juce::Graphics& g);
+    void paintReadout (juce::Graphics& g);
+    float specDbToY (juce::Rectangle<float> r, float db) const;
 
     PuzzlEqAudioProcessor& processor;
-    std::vector<float> preMag, postMag;
+    std::vector<float> preMag, postMag, postPeaks, overlayMag;
     std::vector<int> selection;
     int primarySel = -1;
     int dragBand = -1;

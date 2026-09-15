@@ -12,6 +12,9 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
 
+    std::function<void()> onToggleFullscreen;
+    std::function<void()> onToggleHelp;
+
 private:
     void timerCallback() override;
 
@@ -20,10 +23,12 @@ private:
     juce::ComboBox mode, resolution, character, displayRange, analyzerRange;
     juce::Slider output, gainScale, tilt, speed;
     juce::ToggleButton autoGain, phaseInvert, piano, freeze, analyzerPre;
+    juce::ComboBox presetBox, instanceBox;
     juce::TextButton btnA { "A" }, btnB { "B" }, btnCopy { "Copy" }, btnPaste { "Paste" };
     juce::TextButton btnMatchSrc { "Cap Src" }, btnMatchRef { "Cap Ref" }, btnMatch { "Match" };
     juce::TextButton btnLearn { "MIDI Learn" }, btnUndo { "Undo" }, btnRedo { "Redo" };
-    juce::Label instanceLabel;
+    juce::TextButton btnFull { "Full" }, btnHelp { "?" }, btnListen { "SC Listen" };
+    juce::Label instanceLabel, latencyLabel;
 
     using ComboAtt = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
     using SliderAtt = juce::AudioProcessorValueTreeState::SliderAttachment;

@@ -25,20 +25,30 @@ public:
 
     void process (float* left, float* right, int numSamples);
 
-    int latencySamples() const noexcept { return taps / 2; }
+    int latencySamples() const noexcept { return hop; }
+    float magnitudeAt (float hz) const;
+    int fftSize() const noexcept { return n; }
 
 private:
-    void rebuildIr();
-    void processChannel (std::vector<float>& delay, int& write, float* data, int numSamples);
+    struct Channel
+    {
+        std::vector<float> hist;
+        std::vector<float> ola;
+        int histWrite = 0;
+        int collected = 0;
+        int olaPos = 0;
+    };
+
+    void rebuildResponse();
+    void processChannel (Channel& ch, float* data, int numSamples);
 
     float sr = 48000.0f;
     LinearResolution resolution = LinearResolution::Medium;
     Fft fft;
     int n = 0;
-    int taps = 0;
-    std::vector<float> ir, re, im;
-    std::vector<float> delayL, delayR;
-    int writeL = 0, writeR = 0;
+    int hop = 0;
+    std::vector<float> H, re, im, time, hann;
+    Channel chL, chR;
     std::array<BandState, kMaxBands> lastBands {};
     float lastScale = 1.0f;
     int lastSolo = -1;

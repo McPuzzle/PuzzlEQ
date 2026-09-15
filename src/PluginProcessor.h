@@ -27,10 +27,10 @@ public:
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
 
-    int getNumPrograms() override { return 1; }
-    int getCurrentProgram() override { return 0; }
-    void setCurrentProgram (int) override {}
-    const juce::String getProgramName (int) override { return {}; }
+    int getNumPrograms() override;
+    int getCurrentProgram() override { return currentProgram; }
+    void setCurrentProgram (int index) override;
+    const juce::String getProgramName (int index) override;
     void changeProgramName (int, const juce::String&) override {}
 
     void getStateInformation (juce::MemoryBlock& destData) override;
@@ -47,6 +47,8 @@ public:
 
     void copyActiveBands();
     void pasteBands();
+    void copyBandsFrom (PuzzlEqAudioProcessor& other);
+    void applyFactoryPreset (int index);
 
     void beginMidiLearn (const juce::String& paramId);
     void cancelMidiLearn();
@@ -61,12 +63,22 @@ public:
     void pullStateFromApvts();
 
     float outputPeakL = 0.0f, outputPeakR = 0.0f;
+    float inputPeakL = 0.0f, inputPeakR = 0.0f;
+
+    std::atomic<bool> sidechainListen { false };
+    PuzzlEqAudioProcessor* overlayInstance = nullptr;
+
+    void copyPublishedSpectrum (std::vector<float>& dest) const;
+    int selectedBandForListen = -1;
 
 private:
     juce::AudioProcessorValueTreeState::ParameterLayout makeLayout() { return puzzleq::createParameterLayout(); }
 
     juce::ValueTree stateA, stateB;
     bool showingA = true;
+    int currentProgram = 0;
+    mutable std::mutex specLock;
+    std::vector<float> publishedPost;
     juce::String midiLearnId;
     std::array<int, 128> ccMap {}; // CC -> parameter index, -1 none
 

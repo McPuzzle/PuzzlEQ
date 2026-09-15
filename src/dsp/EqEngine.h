@@ -8,7 +8,9 @@
 #include "dsp/SpectrumAnalyzer.h"
 #include "dsp/EqMatch.h"
 #include "dsp/Character.h"
+#include "dsp/TptSvf.h"
 #include <array>
+#include <atomic>
 
 namespace puzzleq {
 
@@ -20,18 +22,30 @@ public:
 
     void setBands (const std::array<BandState, kMaxBands>& bands);
     void setGlobal (const GlobalState& g);
+    void setSidechainListen (bool on, int band) noexcept
+    {
+        scListen = on;
+        listenBand = band;
+    }
 
     void process (float* left, float* right, const float* sideL, const float* sideR, int numSamples);
 
     SpectrumAnalyzer& analyzer() noexcept { return spectrum; }
     EqMatch& matcher() noexcept { return match; }
     const EqMatch& matcher() const noexcept { return match; }
+    LinearPhaseEq& linearPhase() noexcept { return linear; }
 
     int latencySamples() const noexcept;
     float lastAutoGainDb() const noexcept { return autoGainDb; }
+    float dynamicGainDb (int band) const noexcept
+    {
+        if (band < 0 || band >= kMaxBands)
+            return 0.0f;
+        return dynGainDb[static_cast<size_t> (band)];
+    }
 
-    // Composite magnitude of the static (non-spectral) curve, including gain scale.
     float compositeMagnitudeDb (float hz) const;
+    float bandMagnitudeDb (int band, float hz) const;
 
     const std::array<BandState, kMaxBands>& bands() const noexcept { return currentBands; }
     const GlobalState& global() const noexcept { return currentGlobal; }
@@ -39,6 +53,7 @@ public:
 private:
     void refreshCascades (int bandIndex, float extraGainDb);
     void processIir (float* left, float* right, const float* sideL, const float* sideR, int numSamples);
+    bool usesTpt (const BandState& b) const noexcept;
 
     float sr = 48000.0f;
     std::array<BandState, kMaxBands> currentBands {};
@@ -46,9 +61,13 @@ private:
 
     std::array<Cascade, kMaxBands> casL {}, casR {};
     std::array<Cascade, kMaxBands> scBandL {}, scBandR {};
+    std::array<Cascade, 2> soloIso {};
     std::array<DynamicBand, kMaxBands> dyn {};
+    std::array<TptSvf, kMaxBands> tptL {}, tptR {}, tptTiltL {}, tptTiltR {};
+    std::array<SmoothParam, kMaxBands> smFreq {}, smGain {}, smQ {};
     std::array<float, kMaxBands> lastDesignedGain {};
     std::array<BandState, kMaxBands> lastDesign {};
+    std::array<float, kMaxBands> dynGainDb {};
 
     LinearPhaseEq linear;
     SpectralDynamics spectral;
@@ -58,6 +77,9 @@ private:
     float autoGainDb = 0.0f;
     float autoGainSmooth = 1.0f;
     int samplesUntilLinearRebuild = 0;
+    int lastSolo = -99;
+    std::atomic<bool> scListen { false };
+    std::atomic<int> listenBand { -1 };
 };
 
 } // namespace puzzleq

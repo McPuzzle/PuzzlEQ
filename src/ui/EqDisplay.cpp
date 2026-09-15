@@ -25,7 +25,13 @@ void EqDisplay::timerCallback()
     auto& an = processor.engine.analyzer();
     an.consume (preMag, true);
     an.consume (postMag, false);
+    an.consumePeaks (postPeaks, false);
+    if (processor.overlayInstance != nullptr && processor.overlayInstance != &processor)
+        processor.overlayInstance->copyPublishedSpectrum (overlayMag);
+    else
+        overlayMag.clear();
     processor.pullStateFromApvts();
+    processor.selectedBandForListen = primarySel;
     repaint();
 }
 
@@ -170,11 +176,11 @@ void EqDisplay::showValueEditor (int band, juce::Point<int> at)
         if (editor == nullptr)
             return;
         auto toks = juce::StringArray::fromTokens (editor->getText(), " ,;", "");
-        auto st = puzzleq::readBand (processor.apvts, editorBand);
-        if (toks.size() > 0) st.frequencyHz = toks[0].getFloatValue();
-        if (toks.size() > 1) st.gainDb = toks[1].getFloatValue();
-        if (toks.size() > 2) st.q = toks[2].getFloatValue();
-        puzzleq::writeBand (processor.apvts, editorBand, st);
+        auto edited = puzzleq::readBand (processor.apvts, editorBand);
+        if (toks.size() > 0) edited.frequencyHz = toks[0].getFloatValue();
+        if (toks.size() > 1) edited.gainDb = toks[1].getFloatValue();
+        if (toks.size() > 2) edited.q = toks[2].getFloatValue();
+        puzzleq::writeBand (processor.apvts, editorBand, edited);
         editor.reset();
     };
     editor->onFocusLost = [this] { editor.reset(); };
@@ -441,8 +447,15 @@ void EqDisplay::paintPiano (juce::Graphics& g, juce::Rectangle<float> r)
     }
 }
 
+float EqDisplay::specDbToY (juce::Rectangle<float> r, float db) const
+{
+    const float range = std::max (6.0f, processor.uiGlobal.analyzerRangeDb);
+    const float t = juce::jlimit (0.0f, 1.0f, (db + range) / range);
+    return r.getBottom() - t * r.getHeight();
+}
+
 void EqDisplay::paintSpectrum (juce::Graphics& g, juce::Rectangle<float> r,
-                               const std::vector<float>& mag, juce::Colour c)
+                               const std::vector<float>& mag, juce::Colour c, bool)
 {
     if (mag.size() < 8)
         return;
@@ -456,7 +469,7 @@ void EqDisplay::paintSpectrum (juce::Graphics& g, juce::Rectangle<float> r,
         if (hz < kMinPlotHz || hz > kMaxPlotHz)
             continue;
         const float x = hzToX (hz);
-        const float y = juce::jlimit (r.getY(), r.getBottom(), dbToY (mag[static_cast<size_t> (i)] + 6.0f));
+        const float y = juce::jlimit (r.getY(), r.getBottom(), specDbToY (r, mag[static_cast<size_t> (i)]));
         if (! started)
         {
             p.startNewSubPath (x, r.getBottom());
@@ -473,6 +486,62 @@ void EqDisplay::paintSpectrum (juce::Graphics& g, juce::Rectangle<float> r,
     p.lineTo (r.getRight(), r.getBottom());
     p.closeSubPath();
     g.setColour (c);
+    g.fillPath (p);
+}
+
+void EqDisplay::paintSpectrumLine (juce::Graphics& g, juce::Rectangle<float> r,
+                                   const std::vector<float>& mag, juce::Colour c)
+{
+    if (mag.size() < 8)
+        return;
+    const int n = (static_cast<int> (mag.size()) - 1) * 2;
+    const float sr = processor.getSampleRate() > 0 ? static_cast<float> (processor.getSampleRate()) : 48000.0f;
+    juce::Path p;
+    bool started = false;
+    for (int i = 1; i < static_cast<int> (mag.size()); i += 2)
+    {
+        const float hz = puzzleq::SpectrumAnalyzer::binToHz (i, n, sr);
+        if (hz < kMinPlotHz || hz > kMaxPlotHz)
+            continue;
+        const float x = hzToX (hz);
+        const float y = juce::jlimit (r.getY(), r.getBottom(), specDbToY (r, mag[static_cast<size_t> (i)]));
+        if (! started) { p.startNewSubPath (x, y); started = true; }
+        else p.lineTo (x, y);
+    }
+    if (started)
+    {
+        g.setColour (c);
+        g.strokePath (p, juce::PathStrokeType (1.1f));
+    }
+}
+
+void EqDisplay::paintCollision (juce::Graphics& g, juce::Rectangle<float> r)
+{
+    if (overlayMag.size() < 8 || postMag.size() != overlayMag.size())
+        return;
+    const int n = (static_cast<int> (postMag.size()) - 1) * 2;
+    const float sr = processor.getSampleRate() > 0 ? static_cast<float> (processor.getSampleRate()) : 48000.0f;
+    juce::Path p;
+    bool started = false;
+    for (int i = 1; i < static_cast<int> (postMag.size()); ++i)
+    {
+        const float a = postMag[static_cast<size_t> (i)];
+        const float b = overlayMag[static_cast<size_t> (i)];
+        if (b < a + 2.5f || b < -48.0f)
+            continue;
+        const float hz = puzzleq::SpectrumAnalyzer::binToHz (i, n, sr);
+        if (hz < kMinPlotHz || hz > kMaxPlotHz)
+            continue;
+        const float x = hzToX (hz);
+        const float y = specDbToY (r, b);
+        if (! started) { p.startNewSubPath (x, r.getBottom()); p.lineTo (x, y); started = true; }
+        else p.lineTo (x, y);
+    }
+    if (! started)
+        return;
+    p.lineTo (r.getRight(), r.getBottom());
+    p.closeSubPath();
+    g.setColour (juce::Colour (0x55ff6b3d));
     g.fillPath (p);
 }
 
@@ -500,6 +569,51 @@ void EqDisplay::paintCurve (juce::Graphics& g, juce::Rectangle<float> r)
                                                juce::PathStrokeType::rounded));
 }
 
+void EqDisplay::paintBandGhost (juce::Graphics& g, juce::Rectangle<float> r, int band)
+{
+    if (band < 0)
+        return;
+    juce::Path ghost;
+    const int steps = std::max (48, getWidth() / 8);
+    for (int i = 0; i <= steps; ++i)
+    {
+        const float t = static_cast<float> (i) / static_cast<float> (steps);
+        const float hz = kMinPlotHz * std::pow (kMaxPlotHz / kMinPlotHz, t);
+        const float db = processor.engine.bandMagnitudeDb (band, hz);
+        const float x = r.getX() + t * r.getWidth();
+        const float y = dbToY (db);
+        if (i == 0) ghost.startNewSubPath (x, y);
+        else ghost.lineTo (x, y);
+    }
+    g.setColour (juce::Colour (0x66ffc36b));
+    g.strokePath (ghost, juce::PathStrokeType (1.4f));
+}
+
+void EqDisplay::paintReadout (juce::Graphics& g)
+{
+    if (! getLocalBounds().contains (hoverPos.roundToInt()))
+        return;
+    const float hz = xToHz (hoverPos.x);
+    const float db = yToDb (hoverPos.y);
+    const int note = puzzleq::hzToNearestNote (hz);
+    const char* names[] = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" };
+    const int pc = ((note % 12) + 12) % 12;
+    const int oct = note / 12 - 1;
+    const auto plot = plotBounds();
+    g.setColour (juce::Colours::white.withAlpha (0.18f));
+    g.drawVerticalLine (juce::roundToInt (hoverPos.x), plot.getY(), plot.getBottom());
+    g.setColour (juce::Colour (0xee0c0e13));
+    auto box = juce::Rectangle<float> (hoverPos.x + 10.0f, hoverPos.y - 28.0f, 168.0f, 24.0f);
+    if (box.getRight() > static_cast<float> (getWidth() - 8))
+        box = box.withX (hoverPos.x - 178.0f);
+    g.fillRoundedRectangle (box, 4.0f);
+    g.setColour (juce::Colour (0xffe7ecf4));
+    g.setFont (11.0f);
+    juce::String hzText = hz >= 1000.0f ? juce::String (hz / 1000.0f, 2) + " kHz" : juce::String (hz, 1) + " Hz";
+    g.drawText (hzText + "   " + juce::String (db, 1) + " dB   " + names[pc] + juce::String (oct),
+                box.reduced (6.0f, 0), juce::Justification::centredLeft);
+}
+
 void EqDisplay::paintHandles (juce::Graphics& g)
 {
     auto* lf = dynamic_cast<PuzzlLookAndFeel*> (&getLookAndFeel());
@@ -522,8 +636,10 @@ void EqDisplay::paintHandles (juce::Graphics& g)
 
         if (std::abs (b.dynRangeDb) > 0.01f)
         {
+            const float extra = processor.engine.dynamicGainDb (i);
+            const float ring = rad + 3.0f + std::abs (extra) * 0.25f;
             g.setColour (juce::Colour (0xffff6b7a).withAlpha (0.85f));
-            g.drawEllipse (p.x - rad - 3.0f, p.y - rad - 3.0f, (rad + 3.0f) * 2.0f, (rad + 3.0f) * 2.0f, 1.4f);
+            g.drawEllipse (p.x - ring, p.y - ring, ring * 2.0f, ring * 2.0f, 1.4f);
         }
         if (b.spectral)
         {
@@ -549,17 +665,15 @@ void EqDisplay::paint (juce::Graphics& g)
     paintPiano (g, plot);
 
     if (processor.uiGlobal.analyzerPre)
-        paintSpectrum (g, plot, preMag, specPre);
-    paintSpectrum (g, plot, postMag, spec);
-
-    // Collision tint: where pre > post significantly
-    if (! preMag.empty() && preMag.size() == postMag.size())
-    {
-        // reserved for collision overlay — highlight bins where another instance would overlap
-    }
+        paintSpectrum (g, plot, preMag, specPre, true);
+    paintSpectrum (g, plot, postMag, spec, true);
+    paintSpectrumLine (g, plot, postPeaks, juce::Colour (0x66ffffff));
+    paintCollision (g, plot);
 
     paintCurve (g, plot);
+    paintBandGhost (g, plot, primarySel);
     paintHandles (g);
+    paintReadout (g);
 
     if (sketching && ! sketchPath.isEmpty())
     {

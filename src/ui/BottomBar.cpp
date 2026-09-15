@@ -1,5 +1,6 @@
 #include "ui/BottomBar.h"
 #include "ui/PuzzlLookAndFeel.h"
+#include "state/Presets.h"
 
 BottomBar::BottomBar (PuzzlEqAudioProcessor& proc)
     : processor (proc)
@@ -94,15 +95,49 @@ BottomBar::BottomBar (PuzzlEqAudioProcessor& proc)
     };
     btnLearn.setClickingTogglesState (true);
 
+    const auto& presets = puzzleq::factoryPresets();
+    for (int i = 0; i < static_cast<int> (presets.size()); ++i)
+        presetBox.addItem (presets[static_cast<size_t> (i)].name, i + 1);
+    presetBox.setSelectedId (1, juce::dontSendNotification);
+    presetBox.onChange = [this]
+    {
+        processor.applyFactoryPreset (presetBox.getSelectedId() - 1);
+    };
+
+    instanceBox.onChange = [this]
+    {
+        auto inst = PuzzlEqAudioProcessor::allInstances();
+        const int idx = instanceBox.getSelectedId() - 1;
+        if (idx >= 0 && idx < static_cast<int> (inst.size()))
+        {
+            processor.overlayInstance = inst[static_cast<size_t> (idx)];
+            if (inst[static_cast<size_t> (idx)] != &processor
+                && instanceBox.getText().contains ("copy"))
+                processor.copyBandsFrom (*inst[static_cast<size_t> (idx)]);
+        }
+    };
+
+    btnFull.setClickingTogglesState (true);
+    btnFull.onClick = [this] { if (onToggleFullscreen) onToggleFullscreen(); };
+    btnHelp.setClickingTogglesState (true);
+    btnHelp.onClick = [this] { if (onToggleHelp) onToggleHelp(); };
+    btnListen.setClickingTogglesState (true);
+    btnListen.onClick = [this]
+    {
+        processor.sidechainListen = btnListen.getToggleState();
+    };
+
     for (auto* c : std::initializer_list<juce::Component*> {
              &mode, &resolution, &character, &displayRange, &analyzerRange,
              &output, &gainScale, &tilt, &speed,
              &autoGain, &phaseInvert, &piano, &freeze, &analyzerPre,
              &btnA, &btnB, &btnCopy, &btnPaste, &btnMatchSrc, &btnMatchRef, &btnMatch,
-             &btnLearn, &btnUndo, &btnRedo, &instanceLabel })
+             &btnLearn, &btnUndo, &btnRedo, &instanceLabel, &presetBox, &instanceBox,
+             &btnFull, &btnHelp, &btnListen, &latencyLabel })
         addAndMakeVisible (c);
 
     instanceLabel.setJustificationType (juce::Justification::centredLeft);
+    latencyLabel.setJustificationType (juce::Justification::centredRight);
     startTimerHz (8);
 }
 
@@ -113,6 +148,26 @@ void BottomBar::timerCallback()
                                + " instance" + (inst.size() == 1 ? "" : "s"),
                            juce::dontSendNotification);
     resolution.setEnabled (mode.getSelectedItemIndex() == 2);
+
+    const int lat = processor.engine.latencySamples();
+    const float ms = processor.getSampleRate() > 0
+        ? 1000.0f * static_cast<float> (lat) / static_cast<float> (processor.getSampleRate())
+        : 0.0f;
+    latencyLabel.setText (juce::String (lat) + " smp  " + juce::String (ms, 1) + " ms"
+                              + (processor.engine.lastAutoGainDb() != 0.0f
+                                     ? ("  AG " + juce::String (processor.engine.lastAutoGainDb(), 1) + " dB")
+                                     : juce::String()),
+                          juce::dontSendNotification);
+
+    if (instanceBox.getNumItems() != static_cast<int> (inst.size()))
+    {
+        instanceBox.clear (juce::dontSendNotification);
+        for (int i = 0; i < static_cast<int> (inst.size()); ++i)
+            instanceBox.addItem (inst[static_cast<size_t> (i)]->instanceName
+                                     + (inst[static_cast<size_t> (i)] == &processor ? " (this)" : " — overlay"),
+                                 i + 1);
+        instanceBox.setSelectedId (1, juce::dontSendNotification);
+    }
 }
 
 void BottomBar::paint (juce::Graphics& g)
@@ -121,35 +176,48 @@ void BottomBar::paint (juce::Graphics& g)
     g.setColour (lf ? lf->panel : juce::Colour (0xff141821));
     g.fillRoundedRectangle (getLocalBounds().toFloat(), 8.0f);
 
-    // Output meter
-    const float pk = std::max (processor.outputPeakL, processor.outputPeakR);
-    const float db = pk > 1.0e-6f ? 20.0f * std::log10 (pk) : -60.0f;
-    const float t = juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 60.0f);
-    auto meter = juce::Rectangle<float> (static_cast<float> (getWidth() - 88), 8.0f, 76.0f, 10.0f);
-    g.setColour (lf ? lf->grid : juce::Colours::darkgrey);
-    g.fillRoundedRectangle (meter, 3.0f);
-    g.setColour (pk > 0.99f ? juce::Colour (0xffff6b7a) : (lf ? lf->curve : juce::Colours::cyan));
-    g.fillRoundedRectangle (meter.withWidth (meter.getWidth() * t), 3.0f);
+    auto drawMeter = [&] (float pk, float x, float y, float w)
+    {
+        const float db = pk > 1.0e-6f ? 20.0f * std::log10 (pk) : -60.0f;
+        const float t = juce::jlimit (0.0f, 1.0f, (db + 60.0f) / 60.0f);
+        auto meter = juce::Rectangle<float> (x, y, w, 5.0f);
+        g.setColour (lf ? lf->grid : juce::Colours::darkgrey);
+        g.fillRoundedRectangle (meter, 2.0f);
+        g.setColour (pk > 0.99f ? juce::Colour (0xffff6b7a) : (lf ? lf->curve : juce::Colours::cyan));
+        g.fillRoundedRectangle (meter.withWidth (w * t), 2.0f);
+    };
+    const float mx = static_cast<float> (getWidth() - 100);
+    drawMeter (processor.inputPeakL, mx, 6.0f, 88.0f);
+    drawMeter (processor.inputPeakR, mx, 12.0f, 88.0f);
+    drawMeter (processor.outputPeakL, mx, 20.0f, 88.0f);
+    drawMeter (processor.outputPeakR, mx, 26.0f, 88.0f);
 }
 
 void BottomBar::resized()
 {
     auto r = getLocalBounds().reduced (8);
     auto top = r.removeFromTop (26);
-    instanceLabel.setBounds (top.removeFromLeft (180));
-    btnA.setBounds (top.removeFromLeft (28));
-    btnB.setBounds (top.removeFromLeft (28));
+    instanceLabel.setBounds (top.removeFromLeft (150));
+    presetBox.setBounds (top.removeFromLeft (118));
     top.removeFromLeft (4);
-    btnUndo.setBounds (top.removeFromLeft (48));
-    btnRedo.setBounds (top.removeFromLeft (48));
-    btnCopy.setBounds (top.removeFromLeft (48));
-    btnPaste.setBounds (top.removeFromLeft (52));
-    top.removeFromLeft (6);
-    btnMatchSrc.setBounds (top.removeFromLeft (64));
-    btnMatchRef.setBounds (top.removeFromLeft (64));
-    btnMatch.setBounds (top.removeFromLeft (56));
-    top.removeFromLeft (6);
-    btnLearn.setBounds (top.removeFromLeft (88));
+    instanceBox.setBounds (top.removeFromLeft (130));
+    top.removeFromLeft (4);
+    btnA.setBounds (top.removeFromLeft (26));
+    btnB.setBounds (top.removeFromLeft (26));
+    top.removeFromLeft (4);
+    btnUndo.setBounds (top.removeFromLeft (44));
+    btnRedo.setBounds (top.removeFromLeft (44));
+    btnCopy.setBounds (top.removeFromLeft (44));
+    btnPaste.setBounds (top.removeFromLeft (48));
+    top.removeFromLeft (4);
+    btnMatchSrc.setBounds (top.removeFromLeft (60));
+    btnMatchRef.setBounds (top.removeFromLeft (60));
+    btnMatch.setBounds (top.removeFromLeft (52));
+    top.removeFromLeft (4);
+    btnLearn.setBounds (top.removeFromLeft (80));
+    btnListen.setBounds (top.removeFromLeft (78));
+    btnFull.setBounds (top.removeFromLeft (40));
+    btnHelp.setBounds (top.removeFromLeft (28));
 
     r.removeFromTop (4);
     auto mid = r.removeFromTop (22);
@@ -175,4 +243,6 @@ void BottomBar::resized()
     analyzerRange.setBounds (bot.removeFromLeft (80).removeFromTop (22));
     tilt.setBounds (bot.removeFromLeft (120).removeFromTop (22));
     speed.setBounds (bot.removeFromLeft (120).removeFromTop (22));
+    bot.removeFromLeft (8);
+    latencyLabel.setBounds (bot.removeFromTop (22));
 }

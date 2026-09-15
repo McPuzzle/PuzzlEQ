@@ -15,13 +15,17 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
+    bool keyPressed (const juce::KeyPress&) override;
 
 private:
     PuzzlLookAndFeel lnf;
     juce::Label brand;
+    juce::Label help;
     EqDisplay display;
     BandInspector inspector;
     BottomBar bottom;
+    bool fullscreen = false;
+    bool helpVisible = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PuzzlEqAudioProcessorEditor)
 };

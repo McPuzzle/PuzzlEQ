@@ -17,6 +17,7 @@ public:
 
     void push (const float* left, const float* right, int numSamples, bool pre);
     bool consume (std::vector<float>& magDbOut, bool pre);
+    bool consumePeaks (std::vector<float>& peakDbOut, bool pre);
 
     void setTilt (float dbPerOct) noexcept { tiltDbOct = dbPerOct; }
     void setSmoothing (float s) noexcept { smoothing = s; }
@@ -46,6 +47,7 @@ private:
         int fifoWrite = 0;
         int fifoFilled = 0;
         std::vector<float> magSmooth;
+        std::vector<float> peakHold;
         std::atomic<bool> ready { false };
         std::mutex mutex;
     };

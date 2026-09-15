@@ -1,5 +1,6 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
+#include "state/Presets.h"
 #include <algorithm>
 
 std::mutex PuzzlEqAudioProcessor::registryMutex;
@@ -21,6 +22,9 @@ PuzzlEqAudioProcessor::PuzzlEqAudioProcessor()
 PuzzlEqAudioProcessor::~PuzzlEqAudioProcessor()
 {
     std::lock_guard<std::mutex> lock (registryMutex);
+    for (auto* p : registry)
+        if (p->overlayInstance == this)
+            p->overlayInstance = nullptr;
     registry.erase (std::remove (registry.begin(), registry.end(), this), registry.end());
 }
 
@@ -94,6 +98,7 @@ void PuzzlEqAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     pullStateFromApvts();
     engine.setBands (uiBands);
     engine.setGlobal (uiGlobal);
+    engine.setSidechainListen (sidechainListen.load(), selectedBandForListen);
 
     auto main = getBusBuffer (buffer, true, 0);
     float* l = main.getWritePointer (0);
@@ -110,6 +115,15 @@ void PuzzlEqAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
 
     const int n = buffer.getNumSamples();
 
+    float inL = 0.0f, inR = 0.0f;
+    for (int i = 0; i < n; ++i)
+    {
+        inL = std::max (inL, std::abs (l[i]));
+        inR = std::max (inR, std::abs (r[i]));
+    }
+    inputPeakL = inL;
+    inputPeakR = inR;
+
     engine.process (l, r, scL, scR, n);
     setLatencySamples (engine.latencySamples());
 
@@ -125,6 +139,13 @@ void PuzzlEqAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     }
     outputPeakL = pkL;
     outputPeakR = pkR;
+
+    std::vector<float> spec;
+    if (engine.analyzer().consume (spec, false))
+    {
+        std::lock_guard<std::mutex> lock (specLock);
+        publishedPost = std::move (spec);
+    }
 }
 
 void PuzzlEqAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
@@ -182,6 +203,42 @@ void PuzzlEqAudioProcessor::copyActiveBands()
         if (b.active)
             gClipboard[static_cast<size_t> (gClipboardCount++)] = b;
     }
+}
+
+void PuzzlEqAudioProcessor::copyPublishedSpectrum (std::vector<float>& dest) const
+{
+    std::lock_guard<std::mutex> lock (specLock);
+    dest = publishedPost;
+}
+
+int PuzzlEqAudioProcessor::getNumPrograms()
+{
+    return static_cast<int> (puzzleq::factoryPresets().size());
+}
+
+void PuzzlEqAudioProcessor::setCurrentProgram (int index)
+{
+    applyFactoryPreset (index);
+}
+
+const juce::String PuzzlEqAudioProcessor::getProgramName (int index)
+{
+    const auto& p = puzzleq::factoryPresets();
+    if (index < 0 || index >= static_cast<int> (p.size()))
+        return {};
+    return p[static_cast<size_t> (index)].name;
+}
+
+void PuzzlEqAudioProcessor::applyFactoryPreset (int index)
+{
+    puzzleq::applyPreset (apvts, index);
+    currentProgram = index;
+}
+
+void PuzzlEqAudioProcessor::copyBandsFrom (PuzzlEqAudioProcessor& other)
+{
+    for (int i = 0; i < puzzleq::kMaxBands; ++i)
+        puzzleq::writeBand (apvts, i, puzzleq::readBand (other.apvts, i));
 }
 
 void PuzzlEqAudioProcessor::pasteBands()

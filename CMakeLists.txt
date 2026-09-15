@@ -76,6 +76,7 @@ set(PUZZLEQ_SOURCES
     src/PluginProcessor.cpp
     src/PluginEditor.cpp
     src/state/ParameterLayout.cpp
+    src/state/Presets.cpp
     src/dsp/FilterDesign.cpp
     src/dsp/Fft.cpp
     src/dsp/SpectrumAnalyzer.cpp
@@ -131,7 +132,8 @@ add_executable(PuzzlEQTests
     src/dsp/FilterDesign.cpp
     src/dsp/Fft.cpp
     src/dsp/DynamicEngine.cpp
-    src/dsp/EqMatch.cpp)
+    src/dsp/EqMatch.cpp
+    src/dsp/LinearPhaseEq.cpp)
 
 target_include_directories(PuzzlEQTests PRIVATE src)
 target_link_libraries(PuzzlEQTests PRIVATE Catch2::Catch2WithMain)

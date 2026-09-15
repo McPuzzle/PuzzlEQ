@@ -6,7 +6,7 @@ A premium parametric equalizer plugin. Original DSP and UI. Not a clone of any c
 **Platforms:** macOS, Windows, Linux  
 **License:** AGPLv3 (JUCE commercial license required for closed-source distribution)
 
-## Features (v0.1)
+## Features (v0.2)
 
 - 24-band parametric EQ: Bell, Notch, High/Low Shelf, High/Low Cut, Band Pass, Tilt Shelf, Flat Tilt, All Pass
 - Slopes up to 96 dB/oct plus brickwall HP/LP
@@ -18,7 +18,10 @@ A premium parametric equalizer plugin. Original DSP and UI. Not a clone of any c
 - Auto Gain, Gain Scale, Gentle / Warm character
 - EQ Match (capture source / reference and fit bands)
 - Undo / redo, A/B, MIDI Learn, instance clipboard
-- Interactive curve editor with multi-select and text entry
+- Interactive curve editor with multi-select, text entry, Hz/note readout, fullscreen
+- Factory presets (vocal, mix bus, master, de-mud, air, telephone, kick, snare, guitar)
+- Instance list with spectrum collision overlay
+- Intelligent solo, sidechain listen, stereo I/O meters, latency readout
 
 ## Build
 
