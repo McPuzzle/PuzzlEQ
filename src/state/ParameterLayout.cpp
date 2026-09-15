@@ -176,9 +176,9 @@ void writeBand (juce::AudioProcessorValueTreeState& apvts, int index, const Band
         const float clamped = juce::jlimit (0.0f, 1.0f, v01);
         if (std::abs (p->getValue() - clamped) < 1.0e-7f)
             return;
-        p->beginChangeGesture();
+        // Do not wrap this in begin/endChangeGesture. Nested gestures during a
+        // mouse click are cancelled by FL Studio when the button is released.
         p->setValueNotifyingHost (clamped);
-        p->endChangeGesture();
     };
     auto setFloat = [&] (const juce::String& id, float v)
     {

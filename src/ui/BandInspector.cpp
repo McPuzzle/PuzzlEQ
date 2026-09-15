@@ -20,6 +20,8 @@ BandInspector::BandInspector (PuzzlEqAudioProcessor& proc)
         puzzleq::writeBand (processor.editApvts(), slot, b);
         processor.editTarget().uiBands[static_cast<size_t> (slot)] = b;
         processor.editTarget().engine.setBands (processor.editTarget().uiBands);
+        processor.editTarget().markLocalEdit();
+        processor.editTarget().commitUiBandsToHost();
         setBand (slot);
     };
     addAndMakeVisible (addBandBtn);

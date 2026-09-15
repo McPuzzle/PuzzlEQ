@@ -3,6 +3,7 @@
 #include "state/Presets.h"
 #include <algorithm>
 #include <array>
+#include <cmath>
 
 std::mutex PuzzlEqAudioProcessor::registryMutex;
 std::vector<PuzzlEqAudioProcessor*> PuzzlEqAudioProcessor::registry;
@@ -61,10 +62,44 @@ bool PuzzlEqAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) 
         || mainIn == juce::AudioChannelSet::stereo();
 }
 
+void PuzzlEqAudioProcessor::markLocalEdit()
+{
+    suppressHostPullUntilMs = juce::Time::getMillisecondCounterHiRes() + 1200.0;
+}
+
+bool PuzzlEqAudioProcessor::shouldPullFromHost() const
+{
+    return juce::Time::getMillisecondCounterHiRes() >= suppressHostPullUntilMs;
+}
+
+void PuzzlEqAudioProcessor::commitUiBandsToHost()
+{
+    for (int i = 0; i < puzzleq::kMaxBands; ++i)
+    {
+        const auto have = puzzleq::readBand (apvts, i);
+        const auto& want = uiBands[static_cast<size_t> (i)];
+        if (want.active != have.active
+            || (want.active && (std::abs (want.frequencyHz - have.frequencyHz) > 0.05f
+                                || std::abs (want.gainDb - have.gainDb) > 0.02f
+                                || std::abs (want.q - have.q) > 0.002f
+                                || want.shape != have.shape
+                                || want.enabled != have.enabled)))
+            puzzleq::writeBand (apvts, i, want);
+    }
+}
+
 void PuzzlEqAudioProcessor::pullStateFromApvts()
 {
     for (int i = 0; i < puzzleq::kMaxBands; ++i)
-        uiBands[static_cast<size_t> (i)] = puzzleq::readBand (apvts, i);
+    {
+        auto fromHost = puzzleq::readBand (apvts, i);
+        auto& local = uiBands[static_cast<size_t> (i)];
+        // FL Studio reverts parameter edits when the mouse button comes up.
+        // Never blank a band the UI still considers active.
+        if (local.active && ! fromHost.active && ! shouldPullFromHost())
+            continue;
+        local = fromHost;
+    }
     uiGlobal = puzzleq::readGlobal (apvts);
 }
 
@@ -101,7 +136,10 @@ void PuzzlEqAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     // handles on the next buffer.
     std::array<puzzleq::BandState, puzzleq::kMaxBands> bands {};
     for (int i = 0; i < puzzleq::kMaxBands; ++i)
-        bands[static_cast<size_t> (i)] = puzzleq::readBand (apvts, i);
+    {
+        const auto& local = uiBands[static_cast<size_t> (i)];
+        bands[static_cast<size_t> (i)] = local.active ? local : puzzleq::readBand (apvts, i);
+    }
     const auto g = puzzleq::readGlobal (apvts);
     engine.setBands (bands);
     engine.setGlobal (g);
@@ -157,6 +195,7 @@ void PuzzlEqAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
 
 void PuzzlEqAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
+    commitUiBandsToHost();
     if (auto xml = apvts.copyState().createXml())
         copyXmlToBinary (*xml, destData);
 }
@@ -165,7 +204,11 @@ void PuzzlEqAudioProcessor::setStateInformation (const void* data, int sizeInByt
 {
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
         if (xml->hasTagName (apvts.state.getType()))
+        {
+            suppressHostPullUntilMs = 0.0;
             apvts.replaceState (juce::ValueTree::fromXml (*xml));
+            pullStateFromApvts();
+        }
 }
 
 void PuzzlEqAudioProcessor::snapshotToA()
@@ -237,8 +280,10 @@ const juce::String PuzzlEqAudioProcessor::getProgramName (int)
 
 void PuzzlEqAudioProcessor::applyFactoryPreset (int index)
 {
+    suppressHostPullUntilMs = 0.0;
     puzzleq::applyPreset (apvts, index);
     currentProgram = index;
+    pullStateFromApvts();
 }
 
 void PuzzlEqAudioProcessor::copyBandsFrom (PuzzlEqAudioProcessor& other)

@@ -33,8 +33,17 @@ EqDisplay::~EqDisplay()
 void EqDisplay::timerCallback()
 {
     auto& target = processor.editTarget();
-    if (dragBand < 0)
+    const bool interacting = dragBand >= 0 || ! target.shouldPullFromHost();
+    if (interacting)
     {
+        if ((++hostCommitTicks % 3) == 0)
+            target.commitUiBandsToHost();
+        target.engine.setBands (target.uiBands);
+        target.engine.setGlobal (target.uiGlobal);
+    }
+    else
+    {
+        hostCommitTicks = 0;
         target.pullStateFromApvts();
         target.engine.setBands (target.uiBands);
         target.engine.setGlobal (target.uiGlobal);
@@ -163,21 +172,28 @@ int EqDisplay::hitTestSpectrumPeak (juce::Point<float> p) const
     return best;
 }
 
-void EqDisplay::setSelectedBand (int b)
+void EqDisplay::setSelectedBand (int b, bool notify)
 {
     primarySel = b;
     selection.clear();
     if (b >= 0)
         selection.push_back (b);
-    if (onSelectionChanged)
+    if (notify && onSelectionChanged)
         onSelectionChanged();
+    else if (! notify)
+        selectionNotifyPending = true;
 }
 
 void EqDisplay::addBandAt (float hz, float db)
 {
     auto& target = processor.editTarget();
-    auto& ap = target.apvts;
-    const int slot = puzzleq::findFreeBand (ap);
+    int slot = -1;
+    for (int i = 0; i < puzzleq::kMaxBands; ++i)
+        if (! target.uiBands[static_cast<size_t> (i)].active)
+        {
+            slot = i;
+            break;
+        }
     if (slot < 0)
         return;
 
@@ -190,13 +206,12 @@ void EqDisplay::addBandAt (float hz, float db)
     b.q = 1.0f;
 
     target.undo.beginNewTransaction ("Add band");
-    puzzleq::writeBand (ap, slot, b);
-
-    // Keep the handle visible even if the host is slow to echo the parameter.
     target.uiBands[static_cast<size_t> (slot)] = b;
     target.engine.setBands (target.uiBands);
+    puzzleq::writeBand (target.apvts, slot, b);
+    target.markLocalEdit();
     emptyHint.setVisible (false);
-    setSelectedBand (slot);
+    setSelectedBand (slot, false);
     repaint();
 }
 
@@ -240,7 +255,6 @@ void EqDisplay::updateBandFromDrag (int band, juce::Point<float> p, bool quantiz
     st.frequencyHz = juce::jlimit (puzzleq::kMinHz, puzzleq::kMaxHz, hz);
     if (puzzleq::shapeUsesGain (st.shape))
         st.gainDb = juce::jlimit (puzzleq::kMinGainDb, puzzleq::kMaxGainDb, yToDb (p.y));
-    puzzleq::writeBand (target.apvts, band, st);
     target.uiBands[static_cast<size_t> (band)] = st;
     target.engine.setBands (target.uiBands);
 }
@@ -490,7 +504,6 @@ void EqDisplay::mouseDrag (const juce::MouseEvent& e)
             st.active = true;
             st.q = juce::jlimit (puzzleq::kMinQ, puzzleq::kMaxQ,
                                  dragStartQ * std::pow (2.0f, e.getDistanceFromDragStartY() * -0.01f));
-            puzzleq::writeBand (ap, dragBand, st);
             target.uiBands[static_cast<size_t> (dragBand)] = st;
         }
         return;
@@ -514,8 +527,20 @@ void EqDisplay::mouseDrag (const juce::MouseEvent& e)
             st.gainDb = juce::jlimit (puzzleq::kMinGainDb, puzzleq::kMaxGainDb, o.gain + dDb);
         if (qGesture)
             st.q = juce::jlimit (puzzleq::kMinQ, puzzleq::kMaxQ, o.q * qMul);
-        puzzleq::writeBand (ap, o.index, st);
         target.uiBands[static_cast<size_t> (o.index)] = st;
+    }
+}
+
+void EqDisplay::commitDragToHost()
+{
+    auto& target = processor.editTarget();
+    target.markLocalEdit();
+    target.commitUiBandsToHost();
+    if (selectionNotifyPending)
+    {
+        selectionNotifyPending = false;
+        if (onSelectionChanged)
+            onSelectionChanged();
     }
 }
 
@@ -526,6 +551,7 @@ void EqDisplay::mouseUp (const juce::MouseEvent& e)
     else if (pressOnEmpty && e.mouseWasClicked() && hitTestBand (e.position) < 0)
         addBandAtClick (e.position);
 
+    commitDragToHost();
     pressOnEmpty = false;
     dragBand = -1;
     dragOrigins.clear();

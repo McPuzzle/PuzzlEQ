@@ -21,7 +21,7 @@ public:
     bool keyPressed (const juce::KeyPress&) override;
 
     int selectedBand() const noexcept { return primarySel; }
-    void setSelectedBand (int b);
+    void setSelectedBand (int b, bool notify = true);
     std::function<void()> onSelectionChanged;
 
     void grabSpectrumPeakAt (juce::Point<float> pos);
@@ -40,10 +40,13 @@ private:
     int hitTestSpectrumPeak (juce::Point<float> p) const;
     void addBandAt (float hz, float db);
     void addBandAtClick (juce::Point<float> p);
+    void commitDragToHost();
 
     juce::TextButton addBandBtn { "+ Add Band" };
     juce::TextButton emptyHint { "Click here to add a band" };
     bool pressOnEmpty = false;
+    bool selectionNotifyPending = false;
+    int hostCommitTicks = 0;
     void beginDragOnBand (int band, juce::Point<float> pos);
     void updateBandFromDrag (int band, juce::Point<float> p, bool quantize);
     void showValueEditor (int band, juce::Point<int> at);
