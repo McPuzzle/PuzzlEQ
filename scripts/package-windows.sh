@@ -54,7 +54,11 @@ ZIP="${OUT}/PuzzlEQ-Install-Windows.zip"
 rm -f "$ZIP"
 if command -v zip >/dev/null 2>&1; then
     ( cd "$OUT" && zip -r -y "$(basename "$ZIP")" "$(basename "$STAGE")" )
+elif command -v powershell.exe >/dev/null 2>&1; then
+    STAGE_WIN="$(cygpath -w "$STAGE" 2>/dev/null || echo "$STAGE")"
+    ZIP_WIN="$(cygpath -w "$ZIP" 2>/dev/null || echo "$ZIP")"
+    powershell.exe -NoProfile -Command "Compress-Archive -Path '${STAGE_WIN}' -DestinationPath '${ZIP_WIN}' -Force"
 else
-    python -c "import shutil, os; os.chdir(os.path.abspath(r'''${OUT}''')); shutil.make_archive('PuzzlEQ-Install-Windows', 'zip', '.', 'PuzzlEQ-Install-Windows')"
+    python -c "import shutil, os; out=os.path.abspath(os.environ.get('PUZZLEQ_OUT','.')); os.chdir(out); shutil.make_archive('PuzzlEQ-Install-Windows', 'zip', '.', 'PuzzlEQ-Install-Windows')"
 fi
 echo "Wrote $ZIP"
