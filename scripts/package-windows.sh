@@ -52,5 +52,9 @@ EOF
 mkdir -p "$OUT"
 ZIP="${OUT}/PuzzlEQ-Install-Windows.zip"
 rm -f "$ZIP"
-( cd "$OUT" && zip -r -y "$(basename "$ZIP")" "$(basename "$STAGE")" )
+if command -v zip >/dev/null 2>&1; then
+    ( cd "$OUT" && zip -r -y "$(basename "$ZIP")" "$(basename "$STAGE")" )
+else
+    python -c "import shutil, os; os.chdir(os.path.abspath(r'''${OUT}''')); shutil.make_archive('PuzzlEQ-Install-Windows', 'zip', '.', 'PuzzlEQ-Install-Windows')"
+fi
 echo "Wrote $ZIP"
