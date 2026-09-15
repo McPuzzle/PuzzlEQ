@@ -24,6 +24,22 @@ A premium parametric equalizer plugin. Original DSP and UI. Not a clone of any c
 - Instance list with spectrum collision overlay
 - Intelligent solo, sidechain listen, stereo I/O meters, latency readout
 
+## Install (Linux)
+
+After a Release build, pack and run the installer so you do not have to copy plugins by hand:
+
+```bash
+./scripts/package-linux-installer.sh
+./dist/PuzzlEQ-Install-linux-x86_64.run
+```
+
+That puts files in `~/.vst3/PuzzlEQ.vst3` and `~/.clap/PuzzlEQ.clap`. Then rescan plugins in your DAW.
+
+```bash
+./dist/PuzzlEQ-Install-linux-x86_64.run --uninstall
+sudo dpkg -i dist/puzzleq_*_amd64.deb   # optional system-wide install
+```
+
 ## Build
 
 ```bash
