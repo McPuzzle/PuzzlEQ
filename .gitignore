@@ -1,0 +1,20 @@
+build/
+cmake-build*/
+.cache/
+.idea/
+.vscode/
+*.user
+.DS_Store
+compile_commands.json
+CMakeUserPresets.json
+agent-tools/
+modules/JUCE/
+modules/clap-juce-extensions/
+_deps/
+*.so
+*.vst3
+*.clap
+*.dSYM
+. juce_cache
+*~
+*.swp
