@@ -167,9 +167,15 @@ GlobalState readGlobal (const juce::AudioProcessorValueTreeState& apvts)
 
 void writeBand (juce::AudioProcessorValueTreeState& apvts, int index, const BandState& band)
 {
-    auto set = [&] (const juce::String& id, float v)
+    auto setFloat = [&] (const juce::String& id, float v)
     {
-        if (auto* p = apvts.getParameter (id))
+        if (auto* p = dynamic_cast<juce::AudioParameterFloat*> (apvts.getParameter (id)))
+        {
+            p->beginChangeGesture();
+            *p = v;
+            p->endChangeGesture();
+        }
+        else if (auto* p = apvts.getParameter (id))
         {
             p->beginChangeGesture();
             p->setValueNotifyingHost (p->convertTo0to1 (v));
@@ -178,31 +184,52 @@ void writeBand (juce::AudioProcessorValueTreeState& apvts, int index, const Band
     };
     auto setBool = [&] (const juce::String& id, bool v)
     {
-        if (auto* p = apvts.getParameter (id))
+        if (auto* p = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (id)))
+        {
+            p->beginChangeGesture();
+            *p = v;
+            p->endChangeGesture();
+        }
+        else if (auto* p = apvts.getParameter (id))
         {
             p->beginChangeGesture();
             p->setValueNotifyingHost (v ? 1.0f : 0.0f);
             p->endChangeGesture();
         }
     };
+    auto setChoice = [&] (const juce::String& id, int v)
+    {
+        if (auto* p = dynamic_cast<juce::AudioParameterChoice*> (apvts.getParameter (id)))
+        {
+            p->beginChangeGesture();
+            *p = v;
+            p->endChangeGesture();
+        }
+        else if (auto* p = apvts.getParameter (id))
+        {
+            p->beginChangeGesture();
+            p->setValueNotifyingHost (p->convertTo0to1 (static_cast<float> (v)));
+            p->endChangeGesture();
+        }
+    };
 
     setBool (bandId (index, "act"), band.active);
     setBool (bandId (index, "en"), band.enabled);
-    set (bandId (index, "shp"), static_cast<float> (band.shape));
-    set (bandId (index, "frq"), band.frequencyHz);
-    set (bandId (index, "gn"), band.gainDb);
-    set (bandId (index, "q"), band.q);
-    set (bandId (index, "slp"), band.slopeDbOct);
+    setChoice (bandId (index, "shp"), static_cast<int> (band.shape));
+    setFloat (bandId (index, "frq"), band.frequencyHz);
+    setFloat (bandId (index, "gn"), band.gainDb);
+    setFloat (bandId (index, "q"), band.q);
+    setFloat (bandId (index, "slp"), band.slopeDbOct);
     setBool (bandId (index, "brk"), band.brickwall);
-    set (bandId (index, "plc"), static_cast<float> (band.placement));
-    set (bandId (index, "dyn"), band.dynRangeDb);
-    set (bandId (index, "thr"), band.thresholdDb);
-    set (bandId (index, "atk"), band.attackMs);
-    set (bandId (index, "rel"), band.releaseMs);
+    setChoice (bandId (index, "plc"), static_cast<int> (band.placement));
+    setFloat (bandId (index, "dyn"), band.dynRangeDb);
+    setFloat (bandId (index, "thr"), band.thresholdDb);
+    setFloat (bandId (index, "atk"), band.attackMs);
+    setFloat (bandId (index, "rel"), band.releaseMs);
     setBool (bandId (index, "spc"), band.spectral);
-    set (bandId (index, "trg"), static_cast<float> (band.trigger));
-    set (bandId (index, "scl"), band.scLowHz);
-    set (bandId (index, "sch"), band.scHighHz);
+    setChoice (bandId (index, "trg"), static_cast<int> (band.trigger));
+    setFloat (bandId (index, "scl"), band.scLowHz);
+    setFloat (bandId (index, "sch"), band.scHighHz);
 }
 
 void clearBand (juce::AudioProcessorValueTreeState& apvts, int index)

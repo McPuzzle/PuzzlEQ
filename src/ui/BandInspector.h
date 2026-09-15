@@ -22,6 +22,7 @@ private:
     void* lastEditApvts = nullptr;
 
     juce::Label title;
+    juce::TextButton addBandBtn { "+ Add Band" };
     juce::ComboBox shape, placement, trigger;
     juce::Slider freq, gain, q, slope, dyn, thresh, attack, release;
     juce::ToggleButton enabled, brickwall, spectral;

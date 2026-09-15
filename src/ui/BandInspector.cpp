@@ -3,8 +3,24 @@
 BandInspector::BandInspector (PuzzlEqAudioProcessor& proc)
     : processor (proc)
 {
-    title.setText ("No band selected — double-click the display to add one", juce::dontSendNotification);
+    title.setText ("No band selected — click the graph or + Add Band", juce::dontSendNotification);
     addAndMakeVisible (title);
+    addBandBtn.onClick = [this]
+    {
+        const int slot = puzzleq::findFreeBand (processor.editApvts());
+        if (slot < 0)
+            return;
+        puzzleq::BandState b;
+        b.active = true;
+        b.enabled = true;
+        b.shape = puzzleq::FilterShape::Bell;
+        b.frequencyHz = 1000.0f;
+        processor.undo.beginNewTransaction ("Add band");
+        puzzleq::writeBand (processor.editApvts(), slot, b);
+        processor.editTarget().uiBands[static_cast<size_t> (slot)] = b;
+        setBand (slot);
+    };
+    addAndMakeVisible (addBandBtn);
 
     auto setupKnob = [this] (juce::Slider& s, juce::Label& l, const juce::String& name)
     {
@@ -61,7 +77,7 @@ void BandInspector::rebuildAttachments()
 
     if (band < 0 || band >= puzzleq::kMaxBands)
     {
-        title.setText ("No band selected — double-click the display to add one", juce::dontSendNotification);
+        title.setText ("No band selected — click the graph or + Add Band", juce::dontSendNotification);
         return;
     }
 
@@ -104,7 +120,10 @@ void BandInspector::timerCallback()
 void BandInspector::resized()
 {
     auto r = getLocalBounds().reduced (8);
-    title.setBounds (r.removeFromTop (18));
+    auto header = r.removeFromTop (18);
+    title.setBounds (header.removeFromLeft (juce::jmax (120, header.getWidth() - 110)));
+    addBandBtn.setBounds (header.removeFromRight (100));
+    addBandBtn.setVisible (band < 0);
     r.removeFromTop (4);
     auto row1 = r.removeFromTop (22);
     shape.setBounds (row1.removeFromLeft (130));

@@ -39,6 +39,10 @@ private:
     int hitTestBand (juce::Point<float> p) const;
     int hitTestSpectrumPeak (juce::Point<float> p) const;
     void addBandAt (float hz, float db);
+    void addBandAtClick (juce::Point<float> p);
+
+    juce::TextButton addBandBtn { "+ Add Band" };
+    bool pressOnEmpty = false;
     void updateBandFromDrag (int band, juce::Point<float> p, bool quantize);
     void showValueEditor (int band, juce::Point<int> at);
     void paintGrid (juce::Graphics& g, juce::Rectangle<float> r);
