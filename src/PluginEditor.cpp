@@ -7,6 +7,8 @@ PuzzlEqAudioProcessorEditor::PuzzlEqAudioProcessorEditor (PuzzlEqAudioProcessor&
       bottom (p)
 {
     setLookAndFeel (&lnf);
+    setOpaque (true);
+    p.pullStateFromApvts();
     brand.setText ("PuzzlEQ", juce::dontSendNotification);
     brand.setFont (juce::FontOptions (20.0f, juce::Font::bold));
     brand.setColour (juce::Label::textColourId, lnf.curve);
@@ -15,7 +17,7 @@ PuzzlEqAudioProcessorEditor::PuzzlEqAudioProcessorEditor (PuzzlEqAudioProcessor&
     addAndMakeVisible (inspector);
     addAndMakeVisible (bottom);
 
-    help.setText ("PuzzlEQ  ·  Click empty graph to add a band   Drag to move   Wheel Q/slope   Shift-drag sketch   Cmd-click Spectrum Grab   Alt-click solo   F fullscreen\n"
+    help.setText ("PuzzlEQ  ·  Click the graph (or the big button) to add a band   Drag to move   Wheel Q/slope   Shift-drag sketch   Cmd-click Spectrum Grab   Alt-click solo   F fullscreen\n"
                   "Edit Inst writes to the overlay instance. Match Ov fits this spectrum to the overlay. Cap Src / Cap Ref / Match for residual EQ Match.",
                   juce::dontSendNotification);
     help.setJustificationType (juce::Justification::centredLeft);
@@ -57,7 +59,11 @@ void PuzzlEqAudioProcessorEditor::paint (juce::Graphics& g)
     g.setColour (lnf.muted);
     g.setFont (11.0f);
     auto& p = static_cast<PuzzlEqAudioProcessor&> (processor);
-    g.drawText ("v" PUZZLEQ_VERSION "  ·  " + juce::String (puzzleq::countActiveBands (p.apvts)) + " bands",
+    int n = 0;
+    for (const auto& b : p.uiBands)
+        if (b.active)
+            ++n;
+    g.drawText ("v" PUZZLEQ_VERSION "  ·  " + juce::String (n) + " bands",
                 getLocalBounds().removeFromTop (28).removeFromRight (220).reduced (8, 0),
                 juce::Justification::centredRight);
 }

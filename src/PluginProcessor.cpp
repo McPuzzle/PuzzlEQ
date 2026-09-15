@@ -2,6 +2,7 @@
 #include "PluginEditor.h"
 #include "state/Presets.h"
 #include <algorithm>
+#include <array>
 
 std::mutex PuzzlEqAudioProcessor::registryMutex;
 std::vector<PuzzlEqAudioProcessor*> PuzzlEqAudioProcessor::registry;
@@ -95,9 +96,15 @@ void PuzzlEqAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     }
     midi.clear();
 
-    pullStateFromApvts();
-    engine.setBands (uiBands);
-    engine.setGlobal (uiGlobal);
+    // Read APVTS on the audio thread without overwriting uiBands. The editor
+    // owns uiBands so a host that is slow to echo parameters cannot blank the
+    // handles on the next buffer.
+    std::array<puzzleq::BandState, puzzleq::kMaxBands> bands {};
+    for (int i = 0; i < puzzleq::kMaxBands; ++i)
+        bands[static_cast<size_t> (i)] = puzzleq::readBand (apvts, i);
+    const auto g = puzzleq::readGlobal (apvts);
+    engine.setBands (bands);
+    engine.setGlobal (g);
     engine.setSidechainListen (sidechainListen.load(), selectedBandForListen);
 
     auto main = getBusBuffer (buffer, true, 0);
@@ -213,20 +220,19 @@ void PuzzlEqAudioProcessor::copyPublishedSpectrum (std::vector<float>& dest) con
 
 int PuzzlEqAudioProcessor::getNumPrograms()
 {
-    return static_cast<int> (puzzleq::factoryPresets().size());
+    // Hosts require at least one program. Do not expose factory presets here:
+    // FL Studio (and others) call setCurrentProgram(0) when the editor opens,
+    // which used to apply the empty "Init" preset and wipe every band.
+    return 1;
 }
 
-void PuzzlEqAudioProcessor::setCurrentProgram (int index)
+void PuzzlEqAudioProcessor::setCurrentProgram (int)
 {
-    applyFactoryPreset (index);
 }
 
-const juce::String PuzzlEqAudioProcessor::getProgramName (int index)
+const juce::String PuzzlEqAudioProcessor::getProgramName (int)
 {
-    const auto& p = puzzleq::factoryPresets();
-    if (index < 0 || index >= static_cast<int> (p.size()))
-        return {};
-    return p[static_cast<size_t> (index)].name;
+    return "PuzzlEQ";
 }
 
 void PuzzlEqAudioProcessor::applyFactoryPreset (int index)

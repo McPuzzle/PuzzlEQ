@@ -1,4 +1,5 @@
 #include "state/ParameterLayout.h"
+#include <cmath>
 
 namespace puzzleq {
 
@@ -119,10 +120,10 @@ BandState readBand (const juce::AudioProcessorValueTreeState& apvts, int index)
     b.active        = raw (apvts, bandId (index, "act"), 0.0f) > 0.5f;
     b.enabled       = raw (apvts, bandId (index, "en"), 1.0f) > 0.5f;
     b.shape         = static_cast<FilterShape> (juce::roundToInt (raw (apvts, bandId (index, "shp"), 0.0f)));
-    b.frequencyHz   = raw (apvts, bandId (index, "frq"), 1000.0f);
-    b.gainDb        = raw (apvts, bandId (index, "gn"), 0.0f);
-    b.q             = raw (apvts, bandId (index, "q"), 1.0f);
-    b.slopeDbOct    = raw (apvts, bandId (index, "slp"), 12.0f);
+    b.frequencyHz   = juce::jlimit (kMinHz, kMaxHz, raw (apvts, bandId (index, "frq"), 1000.0f));
+    b.gainDb        = juce::jlimit (kMinGainDb, kMaxGainDb, raw (apvts, bandId (index, "gn"), 0.0f));
+    b.q             = juce::jlimit (kMinQ, kMaxQ, raw (apvts, bandId (index, "q"), 1.0f));
+    b.slopeDbOct    = juce::jlimit (kMinSlope, kMaxSlope, raw (apvts, bandId (index, "slp"), 12.0f));
     b.brickwall     = raw (apvts, bandId (index, "brk"), 0.0f) > 0.5f;
     b.placement     = static_cast<StereoPlacement> (juce::roundToInt (raw (apvts, bandId (index, "plc"), 0.0f)));
     b.dynRangeDb    = raw (apvts, bandId (index, "dyn"), 0.0f);
@@ -167,50 +168,31 @@ GlobalState readGlobal (const juce::AudioProcessorValueTreeState& apvts)
 
 void writeBand (juce::AudioProcessorValueTreeState& apvts, int index, const BandState& band)
 {
+    auto set01 = [&] (const juce::String& id, float v01)
+    {
+        auto* p = apvts.getParameter (id);
+        if (p == nullptr)
+            return;
+        const float clamped = juce::jlimit (0.0f, 1.0f, v01);
+        if (std::abs (p->getValue() - clamped) < 1.0e-7f)
+            return;
+        p->beginChangeGesture();
+        p->setValueNotifyingHost (clamped);
+        p->endChangeGesture();
+    };
     auto setFloat = [&] (const juce::String& id, float v)
     {
-        if (auto* p = dynamic_cast<juce::AudioParameterFloat*> (apvts.getParameter (id)))
-        {
-            p->beginChangeGesture();
-            *p = v;
-            p->endChangeGesture();
-        }
-        else if (auto* p = apvts.getParameter (id))
-        {
-            p->beginChangeGesture();
-            p->setValueNotifyingHost (p->convertTo0to1 (v));
-            p->endChangeGesture();
-        }
+        if (auto* p = apvts.getParameter (id))
+            set01 (id, p->convertTo0to1 (v));
     };
     auto setBool = [&] (const juce::String& id, bool v)
     {
-        if (auto* p = dynamic_cast<juce::AudioParameterBool*> (apvts.getParameter (id)))
-        {
-            p->beginChangeGesture();
-            *p = v;
-            p->endChangeGesture();
-        }
-        else if (auto* p = apvts.getParameter (id))
-        {
-            p->beginChangeGesture();
-            p->setValueNotifyingHost (v ? 1.0f : 0.0f);
-            p->endChangeGesture();
-        }
+        set01 (id, v ? 1.0f : 0.0f);
     };
     auto setChoice = [&] (const juce::String& id, int v)
     {
-        if (auto* p = dynamic_cast<juce::AudioParameterChoice*> (apvts.getParameter (id)))
-        {
-            p->beginChangeGesture();
-            *p = v;
-            p->endChangeGesture();
-        }
-        else if (auto* p = apvts.getParameter (id))
-        {
-            p->beginChangeGesture();
-            p->setValueNotifyingHost (p->convertTo0to1 (static_cast<float> (v)));
-            p->endChangeGesture();
-        }
+        if (auto* p = apvts.getParameter (id))
+            set01 (id, p->convertTo0to1 (static_cast<float> (v)));
     };
 
     setBool (bandId (index, "act"), band.active);

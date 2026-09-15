@@ -12,10 +12,16 @@ EqDisplay::EqDisplay (PuzzlEqAudioProcessor& proc)
     : processor (proc)
 {
     setWantsKeyboardFocus (true);
+    setOpaque (true);
     setMouseCursor (juce::MouseCursor::CrosshairCursor);
     addBandBtn.setTooltip ("Add a bell at 1 kHz");
     addBandBtn.onClick = [this] { addBandAt (1000.0f, 0.0f); };
     addAndMakeVisible (addBandBtn);
+
+    emptyHint.setTooltip ("Adds a 1 kHz bell you can drag");
+    emptyHint.setMouseCursor (juce::MouseCursor::PointingHandCursor);
+    emptyHint.onClick = [this] { addBandAt (1000.0f, 0.0f); };
+    addAndMakeVisible (emptyHint);
     startTimerHz (30);
 }
 
@@ -27,11 +33,14 @@ EqDisplay::~EqDisplay()
 void EqDisplay::timerCallback()
 {
     auto& target = processor.editTarget();
-    target.pullStateFromApvts();
-    target.engine.setBands (target.uiBands);
-    target.engine.setGlobal (target.uiGlobal);
-    if (&target != &processor)
-        processor.pullStateFromApvts();
+    if (dragBand < 0)
+    {
+        target.pullStateFromApvts();
+        target.engine.setBands (target.uiBands);
+        target.engine.setGlobal (target.uiGlobal);
+        if (&target != &processor)
+            processor.pullStateFromApvts();
+    }
 
     if (processor.isEditingRemote())
     {
@@ -53,6 +62,14 @@ void EqDisplay::timerCallback()
             overlayMag.clear();
     }
     processor.selectedBandForListen = primarySel;
+
+    int n = 0;
+    for (const auto& b : target.uiBands)
+        if (b.active)
+            ++n;
+    emptyHint.setVisible (n == 0);
+    if (auto* parent = getParentComponent())
+        parent->repaint();
     repaint();
 }
 
@@ -178,6 +195,7 @@ void EqDisplay::addBandAt (float hz, float db)
     // Keep the handle visible even if the host is slow to echo the parameter.
     target.uiBands[static_cast<size_t> (slot)] = b;
     target.engine.setBands (target.uiBands);
+    emptyHint.setVisible (false);
     setSelectedBand (slot);
     repaint();
 }
@@ -187,17 +205,44 @@ void EqDisplay::addBandAtClick (juce::Point<float> p)
     addBandAt (xToHz (p.x), yToDb (p.y));
 }
 
+void EqDisplay::beginDragOnBand (int band, juce::Point<float> pos)
+{
+    dragBand = band;
+    auto st = processor.editTarget().uiBands[static_cast<size_t> (band)];
+    if (! st.active)
+        st = puzzleq::readBand (processor.editApvts(), band);
+    dragStartQ = st.q;
+    dragOrigins.clear();
+    dragOriginHz = std::max (8.0f, xToHz (pos.x));
+    dragOriginDb = yToDb (pos.y);
+    for (int b : selection)
+    {
+        auto s = processor.editTarget().uiBands[static_cast<size_t> (b)];
+        if (! s.active)
+            s = puzzleq::readBand (processor.editApvts(), b);
+        dragOrigins.push_back ({ b, s.frequencyHz, s.gainDb, s.q });
+    }
+    if (dragOrigins.empty())
+        dragOrigins.push_back ({ band, st.frequencyHz, st.gainDb, st.q });
+}
+
 void EqDisplay::updateBandFromDrag (int band, juce::Point<float> p, bool quantize)
 {
-    auto& ap = processor.editApvts();
-    auto st = puzzleq::readBand (ap, band);
+    auto& target = processor.editTarget();
+    auto st = target.uiBands[static_cast<size_t> (band)];
+    if (! st.active)
+        st = puzzleq::readBand (target.apvts, band);
+    st.active = true;
+    st.enabled = true;
     float hz = xToHz (p.x);
     if (quantize || processor.uiGlobal.pianoRoll)
         hz = puzzleq::noteToHz (puzzleq::hzToNearestNote (hz));
     st.frequencyHz = juce::jlimit (puzzleq::kMinHz, puzzleq::kMaxHz, hz);
     if (puzzleq::shapeUsesGain (st.shape))
         st.gainDb = juce::jlimit (puzzleq::kMinGainDb, puzzleq::kMaxGainDb, yToDb (p.y));
-    puzzleq::writeBand (ap, band, st);
+    puzzleq::writeBand (target.apvts, band, st);
+    target.uiBands[static_cast<size_t> (band)] = st;
+    target.engine.setBands (target.uiBands);
 }
 
 void EqDisplay::showValueEditor (int band, juce::Point<int> at)
@@ -368,16 +413,7 @@ void EqDisplay::mouseDown (const juce::MouseEvent& e)
         {
             setSelectedBand (hit);
         }
-        dragBand = hit;
-        dragStartQ = puzzleq::readBand (processor.editApvts(), hit).q;
-        dragOrigins.clear();
-        dragOriginHz = std::max (8.0f, xToHz (e.position.x));
-        dragOriginDb = yToDb (e.position.y);
-        for (int b : selection)
-        {
-            auto st = puzzleq::readBand (processor.editApvts(), b);
-            dragOrigins.push_back ({ b, st.frequencyHz, st.gainDb, st.q });
-        }
+        beginDragOnBand (hit, e.position);
 
         if (e.mods.isPopupMenu())
         {
@@ -404,10 +440,14 @@ void EqDisplay::mouseDown (const juce::MouseEvent& e)
                                  else if (result == 102)
                                  {
                                      puzzleq::clearBand (ap, hit);
+                                     processor.editTarget().uiBands[static_cast<size_t> (hit)] = {};
+                                     processor.editTarget().engine.setBands (processor.editTarget().uiBands);
                                      setSelectedBand (-1);
                                      return;
                                  }
                                  puzzleq::writeBand (ap, hit, st);
+                                 processor.editTarget().uiBands[static_cast<size_t> (hit)] = st;
+                                 processor.editTarget().engine.setBands (processor.editTarget().uiBands);
                              });
         }
         return;
@@ -419,7 +459,11 @@ void EqDisplay::mouseDown (const juce::MouseEvent& e)
         return;
     }
 
-    pressOnEmpty = true;
+    // Add on mouseDown. FL Studio often swallows the matching mouseUp or
+    // reports it as a drag, so waiting for mouseWasClicked() never creates a band.
+    addBandAtClick (e.position);
+    if (primarySel >= 0)
+        beginDragOnBand (primarySel, e.position);
 }
 
 void EqDisplay::mouseDrag (const juce::MouseEvent& e)
@@ -434,17 +478,20 @@ void EqDisplay::mouseDrag (const juce::MouseEvent& e)
     if (dragBand < 0 || dragOrigins.empty())
         return;
 
-    auto& ap = processor.editApvts();
+    auto& target = processor.editTarget();
+    auto& ap = target.apvts;
     const bool qGesture = e.mods.isMiddleButtonDown() || e.mods.isRightButtonDown();
     if (dragOrigins.size() == 1)
     {
         updateBandFromDrag (dragBand, e.position, e.mods.isShiftDown());
         if (qGesture)
         {
-            auto st = puzzleq::readBand (ap, dragBand);
+            auto st = target.uiBands[static_cast<size_t> (dragBand)];
+            st.active = true;
             st.q = juce::jlimit (puzzleq::kMinQ, puzzleq::kMaxQ,
                                  dragStartQ * std::pow (2.0f, e.getDistanceFromDragStartY() * -0.01f));
             puzzleq::writeBand (ap, dragBand, st);
+            target.uiBands[static_cast<size_t> (dragBand)] = st;
         }
         return;
     }
@@ -455,7 +502,10 @@ void EqDisplay::mouseDrag (const juce::MouseEvent& e)
     const float qMul = qGesture ? std::pow (2.0f, e.getDistanceFromDragStartY() * -0.01f) : 1.0f;
     for (const auto& o : dragOrigins)
     {
-        auto st = puzzleq::readBand (ap, o.index);
+        auto st = target.uiBands[static_cast<size_t> (o.index)];
+        if (! st.active)
+            st = puzzleq::readBand (ap, o.index);
+        st.active = true;
         float hz = o.hz * ratio;
         if (e.mods.isShiftDown() || processor.uiGlobal.pianoRoll)
             hz = puzzleq::noteToHz (puzzleq::hzToNearestNote (hz));
@@ -465,6 +515,7 @@ void EqDisplay::mouseDrag (const juce::MouseEvent& e)
         if (qGesture)
             st.q = juce::jlimit (puzzleq::kMinQ, puzzleq::kMaxQ, o.q * qMul);
         puzzleq::writeBand (ap, o.index, st);
+        target.uiBands[static_cast<size_t> (o.index)] = st;
     }
 }
 
@@ -835,13 +886,14 @@ void EqDisplay::paint (juce::Graphics& g)
            + juce::String (processor.editTarget().uiBands[static_cast<size_t> (hoverBand)].frequencyHz, 1) + " Hz")
         : (processor.isEditingRemote()
                ? ("Editing " + processor.editTarget().instanceName + "  ·  Click empty graph to add a band")
-               : "Click the graph to add a band  ·  Drag to move  ·  Wheel = Q  ·  Shift-drag sketch");
+               : "Click the graph (or the button) to add a band  ·  Drag to move  ·  Wheel = Q");
     g.drawText (hint, getLocalBounds().removeFromTop (16).reduced (10, 0), juce::Justification::centredLeft);
 }
 
 void EqDisplay::resized()
 {
     addBandBtn.setBounds (getLocalBounds().removeFromTop (22).removeFromRight (100).reduced (8, 2));
+    emptyHint.setBounds (plotBounds().toNearestInt().withSizeKeepingCentre (320, 52));
     if (editor != nullptr)
         editor->setTopLeftPosition (8, 8);
 }

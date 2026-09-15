@@ -42,7 +42,9 @@ private:
     void addBandAtClick (juce::Point<float> p);
 
     juce::TextButton addBandBtn { "+ Add Band" };
+    juce::TextButton emptyHint { "Click here to add a band" };
     bool pressOnEmpty = false;
+    void beginDragOnBand (int band, juce::Point<float> pos);
     void updateBandFromDrag (int band, juce::Point<float> p, bool quantize);
     void showValueEditor (int band, juce::Point<int> at);
     void paintGrid (juce::Graphics& g, juce::Rectangle<float> r);
