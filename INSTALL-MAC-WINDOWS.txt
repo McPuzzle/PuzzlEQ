@@ -1,0 +1,40 @@
+PuzzlEQ — Windows and macOS install
+===================================
+
+The previous PuzzlEQ-Install-linux-x86_64.run file is Linux only.
+Windows and Mac DAWs cannot load it.
+
+On the Mac
+----------
+From the PuzzlEQ source folder:
+
+    chmod +x scripts/build-and-install-macos.sh
+    ./scripts/build-and-install-macos.sh
+
+It builds, then copies into:
+  ~/Library/Audio/Plug-Ins/VST3/PuzzlEQ.vst3
+  ~/Library/Audio/Plug-Ins/Components/PuzzlEQ.component
+  ~/Library/Audio/Plug-Ins/CLAP/PuzzlEQ.clap
+
+Needs Xcode Command Line Tools and CMake (brew install cmake ninja).
+Then rescan / restart Logic, Ableton, Reaper, or Bitwig.
+
+On Windows
+----------
+From the PuzzlEQ source folder in PowerShell:
+
+    Set-ExecutionPolicy -Scope Process Bypass
+    .\scripts\build-and-install-windows.ps1
+
+It builds with Visual Studio, asks for administrator permission, then copies into:
+  C:\Program Files\Common Files\VST3\PuzzlEQ.vst3
+  C:\Program Files\Common Files\CLAP\PuzzlEQ.clap
+
+Needs Git, CMake, and Visual Studio 2022 with C++. Then rescan the DAW.
+
+Ready-made installers
+---------------------
+These can only be packed on the matching OS (or GitHub Actions):
+
+  Mac:     scripts/package-macos.sh     ->  Install-PuzzlEQ.command
+  Windows: scripts/package-windows.sh   ->  Install-PuzzlEQ.bat

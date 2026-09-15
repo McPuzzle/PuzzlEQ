@@ -24,21 +24,40 @@ A premium parametric equalizer plugin. Original DSP and UI. Not a clone of any c
 - Instance list with spectrum collision overlay
 - Intelligent solo, sidechain listen, stereo I/O meters, latency readout
 
-## Install (Linux)
+## Install
 
-After a Release build, pack and run the installer so you do not have to copy plugins by hand:
+The Linux `.run` / `.deb` **will not load on Windows or macOS**. Each OS needs its own build and installer.
+
+### macOS (VST3 + AU + CLAP)
+
+```bash
+chmod +x scripts/build-and-install-macos.sh
+./scripts/build-and-install-macos.sh
+```
+
+That compiles on this Mac and copies into `~/Library/Audio/Plug-Ins/VST3`, `.../Components`, and `.../CLAP`. Then rescan (restart Logic). Double-click installer after a build: `./scripts/package-macos.sh` → `dist/PuzzlEQ-Install-macOS.zip` → **Install-PuzzlEQ.command**.
+
+### Windows (VST3 + CLAP)
+
+In PowerShell from the source tree:
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\scripts\build-and-install-windows.ps1
+```
+
+That compiles with Visual Studio and copies into `C:\Program Files\Common Files\VST3` (UAC prompt). Then rescan the DAW. After a Windows build, `scripts\package-windows.sh` makes `dist\PuzzlEQ-Install-Windows.zip` — double-click **Install-PuzzlEQ.bat**. Optional GUI setup: compile `installer/windows/PuzzlEQ.iss` with Inno Setup.
+
+### Linux
 
 ```bash
 ./scripts/package-linux-installer.sh
 ./dist/PuzzlEQ-Install-linux-x86_64.run
 ```
 
-That puts files in `~/.vst3/PuzzlEQ.vst3` and `~/.clap/PuzzlEQ.clap`. Then rescan plugins in your DAW.
+### CI installers
 
-```bash
-./dist/PuzzlEQ-Install-linux-x86_64.run --uninstall
-sudo dpkg -i dist/puzzleq_*_amd64.deb   # optional system-wide install
-```
+Push to GitHub and run the **build-installers** workflow. It uploads `PuzzlEQ-Install-Windows.zip` and `PuzzlEQ-Install-macOS.zip` (plus a `.pkg` on Mac).
 
 ## Build
 

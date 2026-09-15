@@ -1,0 +1,67 @@
+name: build-installers
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch JUCE + CLAP
+        shell: bash
+        run: ./scripts/fetch-deps.sh
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --config Release --target PuzzlEQ_Standalone PuzzlEQ_VST3 PuzzlEQ_CLAP --parallel
+      - name: Package installer
+        shell: bash
+        run: ./scripts/package-windows.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PuzzlEQ-Install-Windows
+          path: dist/PuzzlEQ-Install-Windows.zip
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch JUCE + CLAP
+        run: ./scripts/fetch-deps.sh
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --target PuzzlEQ_Standalone PuzzlEQ_VST3 PuzzlEQ_AU PuzzlEQ_CLAP --parallel
+      - name: Package installer
+        run: ./scripts/package-macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PuzzlEQ-Install-macOS
+          path: |
+            dist/PuzzlEQ-Install-macOS.zip
+            dist/*.pkg
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build clang pkg-config libasound2-dev libfreetype6-dev libx11-dev libxinerama-dev libxrandr-dev libxcursor-dev libxcomposite-dev libgl1-mesa-dev libfontconfig1-dev
+          ./scripts/fetch-deps.sh
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --target PuzzlEQ_Standalone PuzzlEQ_VST3 PuzzlEQ_CLAP --parallel
+      - name: Package installer
+        run: ./scripts/package-linux-installer.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PuzzlEQ-Install-Linux
+          path: |
+            dist/PuzzlEQ-Install-linux-x86_64.run
+            dist/*.deb
