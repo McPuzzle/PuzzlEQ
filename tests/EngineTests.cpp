@@ -5,6 +5,7 @@
 #include "dsp/Character.h"
 #include "dsp/TptSvf.h"
 #include "dsp/LinearPhaseEq.h"
+#include "dsp/EqEngine.h"
 #include "state/BandState.h"
 #include <array>
 #include <vector>
@@ -111,6 +112,72 @@ TEST_CASE ("Linear-phase magnitude target matches the IIR curve")
     const float db = 20.0f * std::log10 (std::max (mag, 1.0e-8f));
     REQUIRE_THAT (db, WithinAbs (6.0f, 0.35f));
     REQUIRE_THAT (lp.magnitudeAt (40.0f), WithinAbs (1.0f, 0.08f));
+}
+
+TEST_CASE ("Residual EQ Match separates two distant bumps")
+{
+    EqMatch m;
+    std::vector<float> src (1025, -22.0f);
+    std::vector<float> ref (1025, -22.0f);
+    for (int i = 50; i < 70; ++i)
+        ref[static_cast<size_t> (i)] = -12.0f;
+    for (int i = 220; i < 250; ++i)
+        ref[static_cast<size_t> (i)] = -10.0f;
+    m.setSourceFrom (src, 48000.0f, 2048);
+    m.setReferenceFrom (ref, 48000.0f, 2048);
+    std::array<BandState, kMaxBands> bands {};
+    const int n = m.fitBands (bands, 6);
+    REQUIRE (n >= 2);
+}
+
+TEST_CASE ("Sketch curve fitter places a low-cut from a rising target")
+{
+    EqMatch m;
+    std::vector<float> hz, db;
+    for (int i = 0; i < 32; ++i)
+    {
+        const float t = static_cast<float> (i) / 31.0f;
+        const float f = 20.0f * std::pow (1000.0f, t);
+        hz.push_back (f);
+        db.push_back (f < 120.0f ? -24.0f : 0.0f);
+    }
+    std::array<BandState, kMaxBands> bands {};
+    const int n = m.fitTargetCurve (hz, db, bands, 6);
+    REQUIRE (n >= 1);
+    bool foundHp = false;
+    for (const auto& b : bands)
+        if (b.active && b.shape == FilterShape::LowCut)
+            foundHp = true;
+    REQUIRE (foundHp);
+}
+
+TEST_CASE ("EqEngine processes stereo plus sidechain at 2x without exploding")
+{
+    EqEngine e;
+    e.prepare (48000.0f, 64);
+    std::array<BandState, kMaxBands> bands {};
+    bands[0].active = true;
+    bands[0].enabled = true;
+    bands[0].shape = FilterShape::Bell;
+    bands[0].frequencyHz = 1000.0f;
+    bands[0].gainDb = 3.0f;
+    bands[0].q = 1.0f;
+    bands[0].dynRangeDb = -4.0f;
+    bands[0].trigger = DynamicTrigger::External;
+    e.setBands (bands);
+    GlobalState g;
+    e.setGlobal (g);
+
+    float L[64] = {}, R[64] = {}, sc[64];
+    for (int i = 0; i < 64; ++i)
+        sc[i] = 0.25f;
+    e.process (L, R, sc, sc, 64);
+    e.process (L, R, sc, sc, 64);
+    float peak = 0.0f;
+    for (int i = 0; i < 64; ++i)
+        peak = std::max (peak, std::max (std::abs (L[i]), std::abs (R[i])));
+    REQUIRE (peak < 1.0f);
+    REQUIRE (std::isfinite (e.compositeMagnitudeDb (1000.0f)));
 }
 
 TEST_CASE ("dbToGain is the standard mapping")

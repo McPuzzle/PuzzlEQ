@@ -9,8 +9,11 @@
 #include "dsp/EqMatch.h"
 #include "dsp/Character.h"
 #include "dsp/TptSvf.h"
+#include "dsp/Oversampler2x.h"
 #include <array>
 #include <atomic>
+#include <cstdint>
+#include <vector>
 
 namespace puzzleq {
 
@@ -54,8 +57,10 @@ private:
     void refreshCascades (int bandIndex, float extraGainDb);
     void processIir (float* left, float* right, const float* sideL, const float* sideR, int numSamples);
     bool usesTpt (const BandState& b) const noexcept;
+    uint64_t bandHash() const noexcept;
 
     float sr = 48000.0f;
+    int maxBlock = 512;
     std::array<BandState, kMaxBands> currentBands {};
     GlobalState currentGlobal {};
 
@@ -73,10 +78,13 @@ private:
     SpectralDynamics spectral;
     SpectrumAnalyzer spectrum;
     EqMatch match;
+    Oversampler2x oversampler;
+    std::vector<float> scUpL, scUpR;
+    std::array<float, kMaxBands> tptFreq {}, tptQ {};
+    uint64_t lastLpHash = 0;
 
     float autoGainDb = 0.0f;
     float autoGainSmooth = 1.0f;
-    int samplesUntilLinearRebuild = 0;
     int lastSolo = -99;
     std::atomic<bool> scListen { false };
     std::atomic<int> listenBand { -1 };

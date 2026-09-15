@@ -1,12 +1,15 @@
 #include "dsp/EqEngine.h"
 #include <cmath>
 #include <algorithm>
+#include <cstring>
 
 namespace puzzleq {
 
-void EqEngine::prepare (float sampleRate, int)
+void EqEngine::prepare (float sampleRate, int block)
 {
     sr = sampleRate;
+    maxBlock = std::max (block, 64);
+    oversampler.prepare (sampleRate, maxBlock);
     for (int i = 0; i < kMaxBands; ++i)
     {
         const size_t s = static_cast<size_t> (i);
@@ -14,17 +17,19 @@ void EqEngine::prepare (float sampleRate, int)
         casR[s].clear();
         scBandL[s].clear();
         scBandR[s].clear();
-        dyn[s].prepare (sampleRate);
+        dyn[s].prepare (sampleRate * 2.0f);
+        smFreq[s].setTimeMs (8.0f, sampleRate * 2.0f);
+        smGain[s].setTimeMs (4.0f, sampleRate * 2.0f);
+        smQ[s].setTimeMs (8.0f, sampleRate * 2.0f);
         tptL[s].reset();
         tptR[s].reset();
         tptTiltL[s].reset();
         tptTiltR[s].reset();
-        smFreq[s].setTimeMs (8.0f, sampleRate);
-        smGain[s].setTimeMs (4.0f, sampleRate);
-        smQ[s].setTimeMs (8.0f, sampleRate);
         smFreq[s].current = smFreq[s].target = 1000.0f;
         smGain[s].current = smGain[s].target = 0.0f;
         smQ[s].current = smQ[s].target = 1.0f;
+        tptFreq[s] = -1.0f;
+        tptQ[s] = -1.0f;
         lastDesignedGain[s] = 1.0e9f;
         lastDesign[s] = {};
         dynGainDb[s] = 0.0f;
@@ -34,9 +39,12 @@ void EqEngine::prepare (float sampleRate, int)
     linear.prepare (sampleRate, currentGlobal.lpResolution);
     spectral.prepare (sampleRate);
     spectrum.prepare (sampleRate, 4096);
+    lastLpHash = 0;
     autoGainSmooth = 1.0f;
     autoGainDb = 0.0f;
     lastSolo = -99;
+    scUpL.assign (static_cast<size_t> (maxBlock * 2), 0.0f);
+    scUpR.assign (static_cast<size_t> (maxBlock * 2), 0.0f);
 }
 
 void EqEngine::reset()
@@ -53,6 +61,33 @@ void EqEngine::reset()
     linear.reset();
     spectral.reset();
     spectrum.reset();
+    oversampler.reset();
+}
+
+uint64_t EqEngine::bandHash() const noexcept
+{
+    uint64_t h = 14695981039346656037ull;
+    auto mix = [&] (uint64_t x)
+    {
+        h ^= x;
+        h *= 1099511628211ull;
+    };
+    for (int i = 0; i < kMaxBands; ++i)
+    {
+        const auto& b = currentBands[static_cast<size_t> (i)];
+        if (! b.isProcessing() || b.spectral)
+            continue;
+        mix (static_cast<uint64_t> (b.shape));
+        mix (static_cast<uint64_t> (std::lround (b.frequencyHz * 100.0f)));
+        mix (static_cast<uint64_t> (std::lround (b.effectiveGain (currentGlobal.gainScale) * 100.0f)));
+        mix (static_cast<uint64_t> (std::lround (b.q * 1000.0f)));
+        mix (static_cast<uint64_t> (std::lround (b.slopeDbOct * 10.0f)));
+        mix (b.brickwall ? 1ull : 0ull);
+        mix (static_cast<uint64_t> (b.placement));
+    }
+    mix (static_cast<uint64_t> (currentGlobal.soloBand + 1));
+    mix (static_cast<uint64_t> (currentGlobal.lpResolution));
+    return h;
 }
 
 void EqEngine::setBands (const std::array<BandState, kMaxBands>& bands)
@@ -75,6 +110,8 @@ int EqEngine::latencySamples() const noexcept
     int lat = 0;
     if (currentGlobal.mode == ProcessingMode::LinearPhase)
         lat = std::max (lat, linear.latencySamples());
+    else
+        lat = std::max (lat, oversampler.latency());
     for (const auto& b : currentBands)
         if (b.isProcessing() && b.spectral)
             lat = std::max (lat, 512);
@@ -93,9 +130,10 @@ float EqEngine::compositeMagnitudeDb (float hz) const
         if (currentGlobal.soloBand >= 0 && currentGlobal.soloBand != i)
             continue;
         Cascade c;
+        const float rate = currentGlobal.mode == ProcessingMode::LinearPhase ? sr : sr * 2.0f;
         designBand (b.shape, b.frequencyHz, b.effectiveGain (currentGlobal.gainScale) + dynGainDb[static_cast<size_t> (i)],
-                    b.q, b.slopeDbOct, b.brickwall, sr, natural, c);
-        h *= cascadeResponse (c, hz, sr);
+                    b.q, b.slopeDbOct, b.brickwall, rate, natural, c);
+        h *= cascadeResponse (c, hz, rate);
     }
     const double mag = std::abs (h);
     if (mag < 1.0e-12)
@@ -111,10 +149,11 @@ float EqEngine::bandMagnitudeDb (int band, float hz) const
     if (! b.isProcessing())
         return 0.0f;
     Cascade c;
+    const float rate = currentGlobal.mode == ProcessingMode::LinearPhase ? sr : sr * 2.0f;
     designBand (b.shape, b.frequencyHz, b.effectiveGain (currentGlobal.gainScale) + dynGainDb[static_cast<size_t> (band)],
-                b.q, b.slopeDbOct, b.brickwall, sr,
+                b.q, b.slopeDbOct, b.brickwall, rate,
                 currentGlobal.mode == ProcessingMode::NaturalPhase, c);
-    return static_cast<float> (cascadeMagnitudeDb (c, hz, sr));
+    return static_cast<float> (cascadeMagnitudeDb (c, hz, rate));
 }
 
 bool EqEngine::usesTpt (const BandState& b) const noexcept
@@ -140,13 +179,14 @@ void EqEngine::refreshCascades (int bandIndex, float extraGainDb)
         && prev.spectral == b.spectral)
         return;
 
-    designBand (b.shape, b.frequencyHz, g, b.q, b.slopeDbOct, b.brickwall, sr, natural,
+    const float rate = sr * 2.0f;
+    designBand (b.shape, b.frequencyHz, g, b.q, b.slopeDbOct, b.brickwall, rate, natural,
                 casL[static_cast<size_t> (bandIndex)]);
     casR[static_cast<size_t> (bandIndex)] = casL[static_cast<size_t> (bandIndex)];
     casR[static_cast<size_t> (bandIndex)].reset();
 
     designBand (FilterShape::BandPass, b.frequencyHz, 0.0f, std::max (0.4f, b.q), 12.0f,
-                false, sr, false, scBandL[static_cast<size_t> (bandIndex)]);
+                false, rate, false, scBandL[static_cast<size_t> (bandIndex)]);
     scBandR[static_cast<size_t> (bandIndex)] = scBandL[static_cast<size_t> (bandIndex)];
     scBandR[static_cast<size_t> (bandIndex)].reset();
 
@@ -206,18 +246,14 @@ void EqEngine::processIir (float* left, float* right, const float* sideL, const 
 
             auto applyTpt = [&] (float x, TptSvf& svf, TptSvf& tilt) -> float
             {
-                svf.set (f, qv, sr);
                 switch (band.shape)
                 {
                     case FilterShape::Bell:      return svf.tickBell (x, g);
                     case FilterShape::LowShelf:  return svf.tickLowShelf (x, g);
                     case FilterShape::HighShelf: return svf.tickHighShelf (x, g);
                     case FilterShape::TiltShelf:
-                        svf.set (f, 0.707f, sr);
-                        tilt.set (f, 0.707f, sr);
                         return tilt.tickHighShelf (svf.tickLowShelf (x, g * 0.5f), -g * 0.5f);
                     case FilterShape::FlatTilt:
-                        svf.set (650.0f, 0.5f, sr);
                         return svf.tickLowShelf (x, g);
                     case FilterShape::Notch:
                     case FilterShape::HighCut:
@@ -232,6 +268,29 @@ void EqEngine::processIir (float* left, float* right, const float* sideL, const 
 
             if (usesTpt (band))
             {
+                if (std::abs (f - tptFreq[s]) > 0.02f || std::abs (qv - tptQ[s]) > 0.001f)
+                {
+                    const float rate = sr * 2.0f;
+                    if (band.shape == FilterShape::TiltShelf)
+                    {
+                        tptL[s].set (f, 0.707f, rate);
+                        tptR[s].set (f, 0.707f, rate);
+                        tptTiltL[s].set (f, 0.707f, rate);
+                        tptTiltR[s].set (f, 0.707f, rate);
+                    }
+                    else if (band.shape == FilterShape::FlatTilt)
+                    {
+                        tptL[s].set (650.0f, 0.5f, rate);
+                        tptR[s].set (650.0f, 0.5f, rate);
+                    }
+                    else
+                    {
+                        tptL[s].set (f, qv, rate);
+                        tptR[s].set (f, qv, rate);
+                    }
+                    tptFreq[s] = f;
+                    tptQ[s] = qv;
+                }
                 switch (band.placement)
                 {
                     case StereoPlacement::Stereo:
@@ -327,16 +386,40 @@ void EqEngine::process (float* left, float* right, const float* sideL, const flo
 
     if (currentGlobal.mode == ProcessingMode::LinearPhase)
     {
-        if (--samplesUntilLinearRebuild <= 0)
+        const uint64_t h = bandHash();
+        if (h != lastLpHash)
         {
             linear.updateFromBands (currentBands, currentGlobal.gainScale, currentGlobal.soloBand, false);
-            samplesUntilLinearRebuild = static_cast<int> (sr * 0.03f);
+            lastLpHash = h;
         }
         linear.process (left, right, numSamples);
     }
     else
     {
-        processIir (left, right, sideL, sideR, numSamples);
+        oversampler.upsample (left, right, numSamples);
+        const float* scL2 = nullptr;
+        const float* scR2 = nullptr;
+        if (sideL != nullptr)
+        {
+            const int n2 = numSamples * 2;
+            if (static_cast<int> (scUpL.size()) < n2)
+            {
+                scUpL.resize (static_cast<size_t> (n2), 0.0f);
+                scUpR.resize (static_cast<size_t> (n2), 0.0f);
+            }
+            for (int s = 0; s < numSamples; ++s)
+            {
+                scUpL[static_cast<size_t> (s * 2)]     = sideL[s];
+                scUpL[static_cast<size_t> (s * 2 + 1)] = sideL[s];
+                const float srS = sideR != nullptr ? sideR[s] : sideL[s];
+                scUpR[static_cast<size_t> (s * 2)]     = srS;
+                scUpR[static_cast<size_t> (s * 2 + 1)] = srS;
+            }
+            scL2 = scUpL.data();
+            scR2 = scUpR.data();
+        }
+        processIir (oversampler.left2(), oversampler.right2(), scL2, scR2, numSamples * 2);
+        oversampler.downsample (left, right, numSamples);
     }
 
     if (spectral.hasWork (currentBands))

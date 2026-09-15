@@ -66,10 +66,28 @@ public:
     float inputPeakL = 0.0f, inputPeakR = 0.0f;
 
     std::atomic<bool> sidechainListen { false };
+    std::atomic<bool> editRemote { false };
     PuzzlEqAudioProcessor* overlayInstance = nullptr;
 
     void copyPublishedSpectrum (std::vector<float>& dest) const;
     int selectedBandForListen = -1;
+
+    bool isEditingRemote() const noexcept
+    {
+        return editRemote.load() && overlayInstance != nullptr && overlayInstance != this;
+    }
+
+    PuzzlEqAudioProcessor& editTarget() noexcept
+    {
+        return isEditingRemote() ? *overlayInstance : *this;
+    }
+
+    const PuzzlEqAudioProcessor& editTarget() const noexcept
+    {
+        return isEditingRemote() ? *overlayInstance : *this;
+    }
+
+    juce::AudioProcessorValueTreeState& editApvts() noexcept { return editTarget().apvts; }
 
 private:
     juce::AudioProcessorValueTreeState::ParameterLayout makeLayout() { return puzzleq::createParameterLayout(); }

@@ -133,7 +133,10 @@ add_executable(PuzzlEQTests
     src/dsp/Fft.cpp
     src/dsp/DynamicEngine.cpp
     src/dsp/EqMatch.cpp
-    src/dsp/LinearPhaseEq.cpp)
+    src/dsp/LinearPhaseEq.cpp
+    src/dsp/SpectrumAnalyzer.cpp
+    src/dsp/SpectralDynamics.cpp
+    src/dsp/EqEngine.cpp)
 
 target_include_directories(PuzzlEQTests PRIVATE src)
 target_link_libraries(PuzzlEQTests PRIVATE Catch2::Catch2WithMain)

@@ -26,6 +26,7 @@ private:
     juce::ComboBox presetBox, instanceBox;
     juce::TextButton btnA { "A" }, btnB { "B" }, btnCopy { "Copy" }, btnPaste { "Paste" };
     juce::TextButton btnMatchSrc { "Cap Src" }, btnMatchRef { "Cap Ref" }, btnMatch { "Match" };
+    juce::TextButton btnMatchOv { "Match Ov" }, btnEditRemote { "Edit Inst" };
     juce::TextButton btnLearn { "MIDI Learn" }, btnUndo { "Undo" }, btnRedo { "Redo" };
     juce::TextButton btnFull { "Full" }, btnHelp { "?" }, btnListen { "SC Listen" };
     juce::Label instanceLabel, latencyLabel;

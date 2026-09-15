@@ -97,7 +97,12 @@ Analog rbj (double hz, double q, double gainDb, double fs)
 
 BiquadCoeffs peaking (double hz, double gainDb, double q, double fs)
 {
-    const auto a = rbj (hz, q, gainDb, fs);
+    // Bandwidth compensation so the analog Q survives bilinear warping
+    // (the main "analog match" for peaking besides 2x oversampling).
+    const double f = clampFreq (hz, fs);
+    const double w0 = 2.0 * kPi * f / fs;
+    const double qM = q * (std::abs (w0) > 1.0e-8 ? std::sin (w0) / w0 : 1.0);
+    const auto a = rbj (hz, qM, gainDb, fs);
     return normalise (1.0 + a.alpha * a.A,
                       -2.0 * a.cosw,
                       1.0 - a.alpha * a.A,
@@ -122,7 +127,10 @@ BiquadCoeffs bandpass (double hz, double q, double fs)
 
 BiquadCoeffs lowShelf2 (double hz, double gainDb, double q, double fs)
 {
-    const auto a = rbj (hz, q, gainDb, fs);
+    const double f = clampFreq (hz, fs);
+    const double w0 = 2.0 * kPi * f / fs;
+    const double qM = q * (std::abs (w0) > 1.0e-8 ? std::sin (w0) / w0 : 1.0);
+    const auto a = rbj (hz, qM, gainDb, fs);
     const double twoSqrtAalpha = 2.0 * std::sqrt (a.A) * a.alpha;
     return normalise (a.A * ((a.A + 1.0) - (a.A - 1.0) * a.cosw + twoSqrtAalpha),
                       2.0 * a.A * ((a.A - 1.0) - (a.A + 1.0) * a.cosw),
@@ -134,7 +142,10 @@ BiquadCoeffs lowShelf2 (double hz, double gainDb, double q, double fs)
 
 BiquadCoeffs highShelf2 (double hz, double gainDb, double q, double fs)
 {
-    const auto a = rbj (hz, q, gainDb, fs);
+    const double f = clampFreq (hz, fs);
+    const double w0 = 2.0 * kPi * f / fs;
+    const double qM = q * (std::abs (w0) > 1.0e-8 ? std::sin (w0) / w0 : 1.0);
+    const auto a = rbj (hz, qM, gainDb, fs);
     const double twoSqrtAalpha = 2.0 * std::sqrt (a.A) * a.alpha;
     return normalise (a.A * ((a.A + 1.0) + (a.A - 1.0) * a.cosw + twoSqrtAalpha),
                       -2.0 * a.A * ((a.A - 1.0) + (a.A + 1.0) * a.cosw),
@@ -165,10 +176,16 @@ BiquadCoeffs butterworthHp2 (double hz, double q, double fs)
                       1.0 + a.alpha, -2.0 * a.cosw, 1.0 - a.alpha);
 }
 
-void addButterworthLp (Cascade& dest, double hz, int order, double fs)
+void addButterworthLp (Cascade& dest, double hz, float orderF, double fs)
 {
+    int order = static_cast<int> (std::floor (orderF));
+    const float frac = orderF - static_cast<float> (order);
     if (order <= 0)
+    {
+        dest.add (firstOrderLowpass (hz, fs));
+        dest.lastMix = std::max (0.05f, orderF);
         return;
+    }
     if (order % 2 == 1)
     {
         dest.add (firstOrderLowpass (hz, fs));
@@ -180,12 +197,23 @@ void addButterworthLp (Cascade& dest, double hz, int order, double fs)
         const double q = 1.0 / (2.0 * std::sin ((2.0 * k + 1.0) * kPi / (2.0 * (pairs * 2))));
         dest.add (butterworthLp2 (hz, q, fs));
     }
+    if (frac > 0.02f)
+    {
+        dest.add (firstOrderLowpass (hz, fs));
+        dest.lastMix = frac;
+    }
 }
 
-void addButterworthHp (Cascade& dest, double hz, int order, double fs)
+void addButterworthHp (Cascade& dest, double hz, float orderF, double fs)
 {
+    int order = static_cast<int> (std::floor (orderF));
+    const float frac = orderF - static_cast<float> (order);
     if (order <= 0)
+    {
+        dest.add (firstOrderHighpass (hz, fs));
+        dest.lastMix = std::max (0.05f, orderF);
         return;
+    }
     if (order % 2 == 1)
     {
         dest.add (firstOrderHighpass (hz, fs));
@@ -196,6 +224,11 @@ void addButterworthHp (Cascade& dest, double hz, int order, double fs)
     {
         const double q = 1.0 / (2.0 * std::sin ((2.0 * k + 1.0) * kPi / (2.0 * (pairs * 2))));
         dest.add (butterworthHp2 (hz, q, fs));
+    }
+    if (frac > 0.02f)
+    {
+        dest.add (firstOrderHighpass (hz, fs));
+        dest.lastMix = frac;
     }
 }
 
@@ -224,6 +257,7 @@ void designBand (FilterShape shape,
     const double f = static_cast<double> (freqHz);
     const double g = static_cast<double> (gainDb);
     const double qq = std::max (0.05, static_cast<double> (q));
+    const float orderF = brickwall ? 16.0f : std::clamp (slopeDbOct / 6.0f, 0.5f, 16.0f);
     const int order = slopeToOrder (slopeDbOct, brickwall);
 
     switch (shape)
@@ -265,11 +299,11 @@ void designBand (FilterShape shape,
             break;
 
         case FilterShape::HighCut:
-            addButterworthLp (dest, f, order, fs);
+            addButterworthLp (dest, f, orderF, fs);
             break;
 
         case FilterShape::LowCut:
-            addButterworthHp (dest, f, order, fs);
+            addButterworthHp (dest, f, orderF, fs);
             break;
 
         case FilterShape::BandPass:
@@ -318,7 +352,7 @@ void designBand (FilterShape shape,
     if (naturalPhase && dest.numSections > 0
         && shape != FilterShape::AllPass && shape != FilterShape::FlatTilt)
     {
-        dest.add (firstOrderAllpass (f, fs));
+        dest.add (allpass2 (f, 0.55, fs));
     }
 }
 
@@ -341,8 +375,14 @@ std::complex<double> biquadResponse (const BiquadCoeffs& c, double freqHz, doubl
 std::complex<double> cascadeResponse (const Cascade& cascade, double freqHz, double sampleRate)
 {
     std::complex<double> h { 1.0, 0.0 };
-    for (int i = 0; i < cascade.numSections; ++i)
+    const int n = cascade.numSections;
+    if (n <= 0)
+        return h;
+    for (int i = 0; i < n - 1; ++i)
         h *= biquadResponse (cascade.sections[static_cast<size_t> (i)].c, freqHz, sampleRate);
+    const auto last = biquadResponse (cascade.sections[static_cast<size_t> (n - 1)].c, freqHz, sampleRate);
+    const double m = static_cast<double> (cascade.lastMix);
+    h *= (m * last + (1.0 - m));
     return h;
 }
 

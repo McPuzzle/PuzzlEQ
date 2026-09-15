@@ -1,6 +1,7 @@
 #include "ui/BottomBar.h"
 #include "ui/PuzzlLookAndFeel.h"
 #include "state/Presets.h"
+#include <algorithm>
 
 BottomBar::BottomBar (PuzzlEqAudioProcessor& proc)
     : processor (proc)
@@ -61,28 +62,54 @@ BottomBar::BottomBar (PuzzlEqAudioProcessor& proc)
     btnUndo.onClick  = [this] { processor.undo.undo(); };
     btnRedo.onClick  = [this] { processor.undo.redo(); };
 
-    btnMatchSrc.onClick = [this]
+    auto snapSr = [this]
+    {
+        return processor.getSampleRate() > 0 ? static_cast<float> (processor.getSampleRate()) : 48000.0f;
+    };
+    auto snapN = [this] { return std::max (256, processor.engine.analyzer().fftSize()); };
+
+    btnMatchSrc.onClick = [this, snapSr, snapN]
     {
         std::vector<float> mag;
-        if (processor.engine.analyzer().consume (mag, false))
-            processor.engine.matcher().accumulate (mag, static_cast<float> (processor.getSampleRate()), 4096);
-        processor.engine.matcher().freezeAsSource();
+        if (processor.engine.analyzer().copyCurrent (mag, true)
+            || processor.engine.analyzer().copyCurrent (mag, false))
+            processor.engine.matcher().setSourceFrom (mag, snapSr(), snapN());
     };
-    btnMatchRef.onClick = [this]
+    btnMatchRef.onClick = [this, snapSr, snapN]
     {
         std::vector<float> mag;
-        if (processor.engine.analyzer().consume (mag, false))
-            processor.engine.matcher().accumulate (mag, static_cast<float> (processor.getSampleRate()), 4096);
-        processor.engine.matcher().freezeAsReference();
+        if (processor.overlayInstance != nullptr && processor.overlayInstance != &processor)
+            processor.overlayInstance->copyPublishedSpectrum (mag);
+        if (mag.size() < 8)
+            processor.engine.analyzer().copyCurrent (mag, false);
+        if (mag.size() >= 8)
+            processor.engine.matcher().setReferenceFrom (mag, snapSr(), snapN());
     };
-    btnMatch.onClick = [this]
+    auto applyMatch = [this]
     {
-        auto bands = processor.uiBands;
-        const int n = processor.engine.matcher().fitBands (bands, 8);
+        auto& target = processor.editTarget();
+        auto bands = target.uiBands;
+        const int n = processor.engine.matcher().fitBands (bands, 10);
         for (int i = 0; i < puzzleq::kMaxBands; ++i)
             if (bands[static_cast<size_t> (i)].active)
-                puzzleq::writeBand (processor.apvts, i, bands[static_cast<size_t> (i)]);
+                puzzleq::writeBand (target.apvts, i, bands[static_cast<size_t> (i)]);
+        target.pullStateFromApvts();
         (void) n;
+    };
+    btnMatch.onClick = applyMatch;
+    btnMatchOv.onClick = [this, snapSr, snapN, applyMatch]
+    {
+        std::vector<float> src, ref;
+        processor.engine.analyzer().copyCurrent (src, true);
+        if (src.size() < 8)
+            processor.engine.analyzer().copyCurrent (src, false);
+        if (processor.overlayInstance != nullptr)
+            processor.overlayInstance->copyPublishedSpectrum (ref);
+        if (src.size() < 8 || ref.size() < 8)
+            return;
+        processor.engine.matcher().setSourceFrom (src, snapSr(), snapN());
+        processor.engine.matcher().setReferenceFrom (ref, snapSr(), snapN());
+        applyMatch();
     };
 
     btnLearn.onClick = [this]
@@ -111,10 +138,22 @@ BottomBar::BottomBar (PuzzlEqAudioProcessor& proc)
         if (idx >= 0 && idx < static_cast<int> (inst.size()))
         {
             processor.overlayInstance = inst[static_cast<size_t> (idx)];
-            if (inst[static_cast<size_t> (idx)] != &processor
-                && instanceBox.getText().contains ("copy"))
-                processor.copyBandsFrom (*inst[static_cast<size_t> (idx)]);
+            if (inst[static_cast<size_t> (idx)] == &processor)
+                processor.editRemote = false;
         }
+    };
+
+    btnEditRemote.setClickingTogglesState (true);
+    btnEditRemote.onClick = [this]
+    {
+        const bool on = btnEditRemote.getToggleState();
+        if (on && (processor.overlayInstance == nullptr || processor.overlayInstance == &processor))
+        {
+            btnEditRemote.setToggleState (false, juce::dontSendNotification);
+            processor.editRemote = false;
+            return;
+        }
+        processor.editRemote = on;
     };
 
     btnFull.setClickingTogglesState (true);
@@ -132,6 +171,7 @@ BottomBar::BottomBar (PuzzlEqAudioProcessor& proc)
              &output, &gainScale, &tilt, &speed,
              &autoGain, &phaseInvert, &piano, &freeze, &analyzerPre,
              &btnA, &btnB, &btnCopy, &btnPaste, &btnMatchSrc, &btnMatchRef, &btnMatch,
+             &btnMatchOv, &btnEditRemote,
              &btnLearn, &btnUndo, &btnRedo, &instanceLabel, &presetBox, &instanceBox,
              &btnFull, &btnHelp, &btnListen, &latencyLabel })
         addAndMakeVisible (c);
@@ -158,6 +198,9 @@ void BottomBar::timerCallback()
                                      ? ("  AG " + juce::String (processor.engine.lastAutoGainDb(), 1) + " dB")
                                      : juce::String()),
                           juce::dontSendNotification);
+
+    btnEditRemote.setToggleState (processor.isEditingRemote(), juce::dontSendNotification);
+    btnEditRemote.setEnabled (processor.overlayInstance != nullptr && processor.overlayInstance != &processor);
 
     if (instanceBox.getNumItems() != static_cast<int> (inst.size()))
     {
@@ -200,7 +243,9 @@ void BottomBar::resized()
     instanceLabel.setBounds (top.removeFromLeft (150));
     presetBox.setBounds (top.removeFromLeft (118));
     top.removeFromLeft (4);
-    instanceBox.setBounds (top.removeFromLeft (130));
+    instanceBox.setBounds (top.removeFromLeft (120));
+    top.removeFromLeft (4);
+    btnEditRemote.setBounds (top.removeFromLeft (64));
     top.removeFromLeft (4);
     btnA.setBounds (top.removeFromLeft (26));
     btnB.setBounds (top.removeFromLeft (26));
@@ -212,7 +257,8 @@ void BottomBar::resized()
     top.removeFromLeft (4);
     btnMatchSrc.setBounds (top.removeFromLeft (60));
     btnMatchRef.setBounds (top.removeFromLeft (60));
-    btnMatch.setBounds (top.removeFromLeft (52));
+    btnMatch.setBounds (top.removeFromLeft (48));
+    btnMatchOv.setBounds (top.removeFromLeft (64));
     top.removeFromLeft (4);
     btnLearn.setBounds (top.removeFromLeft (80));
     btnListen.setBounds (top.removeFromLeft (78));

@@ -65,8 +65,10 @@ void BandInspector::rebuildAttachments()
         return;
     }
 
-    title.setText ("Band " + juce::String (band + 1), juce::dontSendNotification);
-    auto& a = processor.apvts;
+    title.setText ((processor.isEditingRemote() ? ("Remote · " + processor.editTarget().instanceName + " · ") : juce::String())
+                       + "Band " + juce::String (band + 1),
+                   juce::dontSendNotification);
+    auto& a = processor.editApvts();
     const int i = band;
     shapeAtt  = std::make_unique<ComboAtt>  (a, puzzleq::bandId (i, "shp"), shape);
     placeAtt  = std::make_unique<ComboAtt>  (a, puzzleq::bandId (i, "plc"), placement);
@@ -86,6 +88,12 @@ void BandInspector::rebuildAttachments()
 
 void BandInspector::timerCallback()
 {
+    void* cur = &processor.editApvts();
+    if (cur != lastEditApvts)
+    {
+        lastEditApvts = cur;
+        rebuildAttachments();
+    }
     const bool on = band >= 0;
     for (auto* c : std::initializer_list<juce::Component*> {
              &shape, &placement, &trigger, &freq, &gain, &q, &slope,

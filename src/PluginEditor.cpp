@@ -15,8 +15,8 @@ PuzzlEqAudioProcessorEditor::PuzzlEqAudioProcessorEditor (PuzzlEqAudioProcessor&
     addAndMakeVisible (inspector);
     addAndMakeVisible (bottom);
 
-    help.setText ("PuzzlEQ  ·  Double-click add band   Drag move   Wheel Q/slope   Shift-drag sketch   Cmd-click Spectrum Grab   Alt-click solo   F fullscreen   ? help   Delete remove   S solo\n"
-                  "Dynamic: set Dyn ring on a bell/shelf. Spectral: right-click handle. Instance list overlays another PuzzlEQ spectrum (collision). EQ Match: Cap Src / Cap Ref / Match.",
+    help.setText ("PuzzlEQ  ·  Double-click add   Drag move   Multi-select Cmd-click   Wheel Q/slope   Shift-drag sketch   Cmd-click Spectrum Grab   Alt-click solo   F fullscreen   ? help\n"
+                  "Edit Inst writes to the overlay instance. Match Ov fits this spectrum to the overlay. Cap Src / Cap Ref / Match for residual EQ Match. Dynamic + Spectral on the handle menu.",
                   juce::dontSendNotification);
     help.setJustificationType (juce::Justification::centredLeft);
     help.setColour (juce::Label::backgroundColourId, juce::Colour (0xee0c0e13));

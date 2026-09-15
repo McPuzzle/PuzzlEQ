@@ -6,19 +6,20 @@ A premium parametric equalizer plugin. Original DSP and UI. Not a clone of any c
 **Platforms:** macOS, Windows, Linux  
 **License:** AGPLv3 (JUCE commercial license required for closed-source distribution)
 
-## Features (v0.2)
+## Features (v0.3)
 
 - 24-band parametric EQ: Bell, Notch, High/Low Shelf, High/Low Cut, Band Pass, Tilt Shelf, Flat Tilt, All Pass
-- Slopes up to 96 dB/oct plus brickwall HP/LP
+- Analog-matched Zero Latency / Natural Phase via 2× oversampling, Q compensation, and fractional slopes (6–96 dB/oct)
 - Per-band Stereo / Left / Right / Mid / Side
 - Zero Latency, Natural Phase, and Linear Phase processing
 - Dynamic EQ with attack, release, threshold, and sidechain trigger
 - Spectral dynamics (per-bin treatment inside a band)
-- Spectrum analyzer (pre/post), Spectrum Grab, piano roll, intelligent solo
+- Spectrum analyzer (pre/post), parabolic Spectrum Grab, piano roll, intelligent solo
 - Auto Gain, Gain Scale, Gentle / Warm character
-- EQ Match (capture source / reference and fit bands)
+- Residual EQ Match (Cap Src / Cap Ref / Match) plus Match Overlay from another instance
 - Undo / redo, A/B, MIDI Learn, instance clipboard
-- Interactive curve editor with multi-select, text entry, Hz/note readout, fullscreen
+- Interactive curve editor: multi-select drag, EQ Sketch, text entry, Hz/note readout, fullscreen
+- Remote instance edit (Edit Inst writes into another PuzzlEQ on the same host)
 - Factory presets (vocal, mix bus, master, de-mud, air, telephone, kick, snare, guitar)
 - Instance list with spectrum collision overlay
 - Intelligent solo, sidechain listen, stereo I/O meters, latency readout

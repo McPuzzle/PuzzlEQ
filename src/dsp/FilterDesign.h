@@ -38,10 +38,12 @@ struct Cascade
 {
     std::array<Biquad, kMaxSections> sections {};
     int numSections = 0;
+    float lastMix = 1.0f;
 
     void clear() noexcept
     {
         numSections = 0;
+        lastMix = 1.0f;
         reset();
     }
 
@@ -62,9 +64,16 @@ struct Cascade
 
     inline float process (float x) noexcept
     {
-        for (int i = 0; i < numSections; ++i)
+        if (numSections <= 0)
+            return x;
+        const int last = numSections - 1;
+        for (int i = 0; i < last; ++i)
             x = sections[static_cast<size_t> (i)].process (x);
-        return x;
+        if (lastMix >= 0.999f)
+            return sections[static_cast<size_t> (last)].process (x);
+        const float dry = x;
+        const float wet = sections[static_cast<size_t> (last)].process (x);
+        return lastMix * wet + (1.0f - lastMix) * dry;
     }
 };
 

@@ -2,8 +2,11 @@
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include "dsp/FilterDesign.h"
 #include "dsp/Fft.h"
+#include "dsp/Oversampler2x.h"
+#include "dsp/SpectrumAnalyzer.h"
 #include <vector>
 #include <cmath>
+#include <algorithm>
 
 using Catch::Matchers::WithinAbs;
 using namespace puzzleq;
@@ -121,6 +124,50 @@ TEST_CASE ("FFT impulse is flat-ish magnitude")
                                      + im[static_cast<size_t> (i)] * im[static_cast<size_t> (i)]);
         REQUIRE_THAT (mag, WithinAbs (1.0f, 1.0e-4f));
     }
+}
+
+TEST_CASE ("Fractional 15 dB/oct high-cut sits between 12 and 24")
+{
+    Cascade c12, c15, c24;
+    designBand (FilterShape::HighCut, 2000.0f, 0.0f, 0.707f, 12.0f, false, 48000.0f, false, c12);
+    designBand (FilterShape::HighCut, 2000.0f, 0.0f, 0.707f, 15.0f, false, 48000.0f, false, c15);
+    designBand (FilterShape::HighCut, 2000.0f, 0.0f, 0.707f, 24.0f, false, 48000.0f, false, c24);
+    const double m12 = cascadeMagnitudeDb (c12, 4000.0, 48000.0);
+    const double m15 = cascadeMagnitudeDb (c15, 4000.0, 48000.0);
+    const double m24 = cascadeMagnitudeDb (c24, 4000.0, 48000.0);
+    REQUIRE (m15 < m12);
+    REQUIRE (m15 > m24);
+}
+
+TEST_CASE ("12 kHz analog-matched bell still peaks at +6 dB at 2x rate")
+{
+    Cascade c;
+    designBand (FilterShape::Bell, 12000.0f, 6.0f, 1.0f, 12.0f, false, 96000.0f, false, c);
+    REQUIRE_THAT (cascadeMagnitudeDb (c, 12000.0, 96000.0), WithinAbs (6.0, 0.25));
+    REQUIRE_THAT (cascadeMagnitudeDb (c, 200.0, 96000.0), WithinAbs (0.0, 0.6));
+}
+
+TEST_CASE ("Oversampler 2x is silent on silence and reports latency")
+{
+    Oversampler2x os;
+    os.prepare (48000.0f, 64);
+    REQUIRE (os.latency() > 0);
+    float l[64] = {}, r[64] = {};
+    os.upsample (l, r, 64);
+    os.downsample (l, r, 64);
+    float peak = 0.0f;
+    for (int i = 0; i < 64; ++i)
+        peak = std::max (peak, std::max (std::abs (l[i]), std::abs (r[i])));
+    REQUIRE (peak < 1.0e-5f);
+}
+
+TEST_CASE ("Parabolic peak interpolation is exact on a quadratic")
+{
+    // y = -(x-0.3)^2 so peak at +0.3 bins
+    const float ym1 = -(-1.0f - 0.3f) * (-1.0f - 0.3f);
+    const float y0  = -(0.0f - 0.3f) * (0.0f - 0.3f);
+    const float yp1 = -(1.0f - 0.3f) * (1.0f - 0.3f);
+    REQUIRE_THAT (SpectrumAnalyzer::parabolicDelta (ym1, y0, yp1), WithinAbs (0.3f, 0.02f));
 }
 
 TEST_CASE ("FFT inverse restores a sine")

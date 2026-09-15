@@ -26,6 +26,7 @@ public:
 
     void grabSpectrumPeakAt (juce::Point<float> pos);
     void beginSketch();
+    void commitSketch();
 
 private:
     void timerCallback() override;
@@ -58,8 +59,13 @@ private:
     int primarySel = -1;
     int dragBand = -1;
     float dragStartQ = 1.0f;
+    struct DragOrigin { int index = -1; float hz = 1000.0f; float gain = 0.0f; float q = 1.0f; };
+    std::vector<DragOrigin> dragOrigins;
+    float dragOriginHz = 1000.0f;
+    float dragOriginDb = 0.0f;
     bool sketching = false;
     juce::Path sketchPath;
+    std::vector<juce::Point<float>> sketchPts;
     juce::Point<float> hoverPos;
     int hoverBand = -1;
     std::unique_ptr<juce::TextEditor> editor;

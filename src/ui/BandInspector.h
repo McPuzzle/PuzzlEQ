@@ -19,6 +19,7 @@ private:
 
     PuzzlEqAudioProcessor& processor;
     int band = -1;
+    void* lastEditApvts = nullptr;
 
     juce::Label title;
     juce::ComboBox shape, placement, trigger;

@@ -40,6 +40,17 @@ public:
         return b;
     }
 
+    // Quadratic peak offset in bins. ym1/y0/yp1 are consecutive bin values.
+    static float parabolicDelta (float ym1, float y0, float yp1) noexcept
+    {
+        const float d = ym1 - 2.0f * y0 + yp1;
+        if (std::abs (d) < 1.0e-8f)
+            return 0.0f;
+        return 0.5f * (ym1 - yp1) / d;
+    }
+
+    bool copyCurrent (std::vector<float>& magDbOut, bool pre) const;
+
 private:
     struct Channel
     {
@@ -49,7 +60,7 @@ private:
         std::vector<float> magSmooth;
         std::vector<float> peakHold;
         std::atomic<bool> ready { false };
-        std::mutex mutex;
+        mutable std::mutex mutex;
     };
 
     void processFifo (Channel& ch);

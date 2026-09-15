@@ -22,15 +22,32 @@ EqDisplay::~EqDisplay()
 
 void EqDisplay::timerCallback()
 {
-    auto& an = processor.engine.analyzer();
-    an.consume (preMag, true);
-    an.consume (postMag, false);
-    an.consumePeaks (postPeaks, false);
-    if (processor.overlayInstance != nullptr && processor.overlayInstance != &processor)
-        processor.overlayInstance->copyPublishedSpectrum (overlayMag);
+    auto& target = processor.editTarget();
+    target.pullStateFromApvts();
+    target.engine.setBands (target.uiBands);
+    target.engine.setGlobal (target.uiGlobal);
+    if (&target != &processor)
+        processor.pullStateFromApvts();
+
+    if (processor.isEditingRemote())
+    {
+        target.copyPublishedSpectrum (postMag);
+        processor.copyPublishedSpectrum (overlayMag);
+        preMag.clear();
+        postPeaks.clear();
+        target.engine.analyzer().copyCurrent (postPeaks, false);
+    }
     else
-        overlayMag.clear();
-    processor.pullStateFromApvts();
+    {
+        auto& an = processor.engine.analyzer();
+        an.consume (preMag, true);
+        an.consume (postMag, false);
+        an.consumePeaks (postPeaks, false);
+        if (processor.overlayInstance != nullptr && processor.overlayInstance != &processor)
+            processor.overlayInstance->copyPublishedSpectrum (overlayMag);
+        else
+            overlayMag.clear();
+    }
     processor.selectedBandForListen = primarySel;
     repaint();
 }
@@ -83,7 +100,7 @@ int EqDisplay::hitTestBand (juce::Point<float> p) const
     float bestD = 14.0f;
     for (int i = 0; i < puzzleq::kMaxBands; ++i)
     {
-        const auto& b = processor.uiBands[static_cast<size_t> (i)];
+        const auto& b = processor.editTarget().uiBands[static_cast<size_t> (i)];
         if (! b.active)
             continue;
         const auto q = bandToPoint (b);
@@ -137,7 +154,8 @@ void EqDisplay::setSelectedBand (int b)
 
 void EqDisplay::addBandAt (float hz, float db)
 {
-    const int slot = puzzleq::findFreeBand (processor.apvts);
+    auto& ap = processor.editApvts();
+    const int slot = puzzleq::findFreeBand (ap);
     if (slot < 0)
         return;
     puzzleq::BandState b;
@@ -147,27 +165,30 @@ void EqDisplay::addBandAt (float hz, float db)
     b.frequencyHz = juce::jlimit (puzzleq::kMinHz, puzzleq::kMaxHz, hz);
     b.gainDb = juce::jlimit (puzzleq::kMinGainDb, puzzleq::kMaxGainDb, db);
     b.q = 1.0f;
-    puzzleq::writeBand (processor.apvts, slot, b);
+    puzzleq::writeBand (ap, slot, b);
+    processor.editTarget().pullStateFromApvts();
     setSelectedBand (slot);
 }
 
 void EqDisplay::updateBandFromDrag (int band, juce::Point<float> p, bool quantize)
 {
-    auto st = puzzleq::readBand (processor.apvts, band);
+    auto& ap = processor.editApvts();
+    auto st = puzzleq::readBand (ap, band);
     float hz = xToHz (p.x);
     if (quantize || processor.uiGlobal.pianoRoll)
         hz = puzzleq::noteToHz (puzzleq::hzToNearestNote (hz));
     st.frequencyHz = juce::jlimit (puzzleq::kMinHz, puzzleq::kMaxHz, hz);
     if (puzzleq::shapeUsesGain (st.shape))
         st.gainDb = juce::jlimit (puzzleq::kMinGainDb, puzzleq::kMaxGainDb, yToDb (p.y));
-    puzzleq::writeBand (processor.apvts, band, st);
+    puzzleq::writeBand (ap, band, st);
 }
 
 void EqDisplay::showValueEditor (int band, juce::Point<int> at)
 {
     editorBand = band;
     editor = std::make_unique<juce::TextEditor>();
-    auto st = puzzleq::readBand (processor.apvts, band);
+    auto& ap = processor.editApvts();
+    auto st = puzzleq::readBand (ap, band);
     editor->setText (juce::String (st.frequencyHz, 1) + "  " + juce::String (st.gainDb, 1)
                      + "  " + juce::String (st.q, 2));
     editor->setBounds (at.x, at.y, 180, 22);
@@ -176,11 +197,11 @@ void EqDisplay::showValueEditor (int band, juce::Point<int> at)
         if (editor == nullptr)
             return;
         auto toks = juce::StringArray::fromTokens (editor->getText(), " ,;", "");
-        auto edited = puzzleq::readBand (processor.apvts, editorBand);
+        auto edited = puzzleq::readBand (processor.editApvts(), editorBand);
         if (toks.size() > 0) edited.frequencyHz = toks[0].getFloatValue();
         if (toks.size() > 1) edited.gainDb = toks[1].getFloatValue();
         if (toks.size() > 2) edited.q = toks[2].getFloatValue();
-        puzzleq::writeBand (processor.apvts, editorBand, edited);
+        puzzleq::writeBand (processor.editApvts(), editorBand, edited);
         editor.reset();
     };
     editor->onFocusLost = [this] { editor.reset(); };
@@ -191,17 +212,97 @@ void EqDisplay::showValueEditor (int band, juce::Point<int> at)
 void EqDisplay::grabSpectrumPeakAt (juce::Point<float> pos)
 {
     const int bin = hitTestSpectrumPeak (pos);
-    if (bin < 0)
+    if (bin < 0 || postMag.size() < 8)
         return;
     const int n = (static_cast<int> (postMag.size()) - 1) * 2;
     const float sr = processor.getSampleRate() > 0 ? static_cast<float> (processor.getSampleRate()) : 48000.0f;
-    addBandAt (puzzleq::SpectrumAnalyzer::binToHz (bin, n, sr), 0.0f);
+    const float y0 = postMag[static_cast<size_t> (bin - 1)];
+    const float y1 = postMag[static_cast<size_t> (bin)];
+    const float y2 = postMag[static_cast<size_t> (bin + 1)];
+    const float delta = puzzleq::SpectrumAnalyzer::parabolicDelta (y0, y1, y2);
+    const float hz = juce::jlimit (puzzleq::kMinHz, puzzleq::kMaxHz,
+                                   (static_cast<float> (bin) + delta) * sr / static_cast<float> (n));
+
+    int L = bin, R = bin;
+    while (L > 2 && postMag[static_cast<size_t> (L)] > y1 - 6.0f)
+        --L;
+    while (R < static_cast<int> (postMag.size()) - 2 && postMag[static_cast<size_t> (R)] > y1 - 6.0f)
+        ++R;
+    const float f1 = puzzleq::SpectrumAnalyzer::binToHz (std::max (1, L), n, sr);
+    const float f2 = puzzleq::SpectrumAnalyzer::binToHz (R, n, sr);
+    const float q = juce::jlimit (puzzleq::kMinQ, 12.0f, hz / std::max (f2 - f1, hz * 0.08f));
+
+    addBandAt (hz, 0.0f);
+    if (primarySel >= 0)
+    {
+        auto st = puzzleq::readBand (processor.editApvts(), primarySel);
+        st.q = q;
+        puzzleq::writeBand (processor.editApvts(), primarySel, st);
+    }
 }
 
 void EqDisplay::beginSketch()
 {
     sketching = true;
     sketchPath.clear();
+    sketchPts.clear();
+}
+
+void EqDisplay::commitSketch()
+{
+    if (sketchPts.size() < 4)
+    {
+        sketching = false;
+        sketchPath.clear();
+        sketchPts.clear();
+        return;
+    }
+
+    std::sort (sketchPts.begin(), sketchPts.end(),
+               [] (const juce::Point<float>& a, const juce::Point<float>& b) { return a.x < b.x; });
+
+    std::vector<float> hz, db;
+    hz.reserve (48);
+    db.reserve (48);
+    for (int i = 0; i < 48; ++i)
+    {
+        const float t = static_cast<float> (i) / 47.0f;
+        const float f = kMinPlotHz * std::pow (kMaxPlotHz / kMinPlotHz, t);
+        const float x = hzToX (f);
+        float y = sketchPts.front().y;
+        if (x <= sketchPts.front().x)
+            y = sketchPts.front().y;
+        else if (x >= sketchPts.back().x)
+            y = sketchPts.back().y;
+        else
+        {
+            for (size_t k = 1; k < sketchPts.size(); ++k)
+            {
+                if (x <= sketchPts[k].x)
+                {
+                    const float u = (x - sketchPts[k - 1].x)
+                                  / std::max (1.0f, sketchPts[k].x - sketchPts[k - 1].x);
+                    y = sketchPts[k - 1].y + u * (sketchPts[k].y - sketchPts[k - 1].y);
+                    break;
+                }
+            }
+        }
+        hz.push_back (f);
+        db.push_back (yToDb (y));
+    }
+
+    auto bands = processor.editTarget().uiBands;
+    const int n = processor.engine.matcher().fitTargetCurve (hz, db, bands, 8);
+    auto& ap = processor.editApvts();
+    for (int i = 0; i < puzzleq::kMaxBands; ++i)
+        if (bands[static_cast<size_t> (i)].active)
+            puzzleq::writeBand (ap, i, bands[static_cast<size_t> (i)]);
+    processor.editTarget().pullStateFromApvts();
+    (void) n;
+
+    sketching = false;
+    sketchPath.clear();
+    sketchPts.clear();
 }
 
 void EqDisplay::mouseDown (const juce::MouseEvent& e)
@@ -212,8 +313,6 @@ void EqDisplay::mouseDown (const juce::MouseEvent& e)
     if (e.mods.isAltDown())
     {
         const int hit = hitTestBand (e.position);
-        if (auto* p = processor.apvts.getParameter (puzzleq::bandId (0, "act")))
-            (void) p;
         if (auto* solo = processor.apvts.getParameter (puzzleq::pid::soloBand))
         {
             solo->beginChangeGesture();
@@ -229,6 +328,7 @@ void EqDisplay::mouseDown (const juce::MouseEvent& e)
     {
         beginSketch();
         sketchPath.startNewSubPath (e.position);
+        sketchPts.push_back (e.position);
         return;
     }
 
@@ -251,7 +351,15 @@ void EqDisplay::mouseDown (const juce::MouseEvent& e)
             setSelectedBand (hit);
         }
         dragBand = hit;
-        dragStartQ = puzzleq::readBand (processor.apvts, hit).q;
+        dragStartQ = puzzleq::readBand (processor.editApvts(), hit).q;
+        dragOrigins.clear();
+        dragOriginHz = std::max (8.0f, xToHz (e.position.x));
+        dragOriginDb = yToDb (e.position.y);
+        for (int b : selection)
+        {
+            auto st = puzzleq::readBand (processor.editApvts(), b);
+            dragOrigins.push_back ({ b, st.frequencyHz, st.gainDb, st.q });
+        }
 
         if (e.mods.isPopupMenu())
         {
@@ -267,7 +375,8 @@ void EqDisplay::mouseDown (const juce::MouseEvent& e)
                              {
                                  if (result <= 0)
                                      return;
-                                 auto st = puzzleq::readBand (processor.apvts, hit);
+                                 auto& ap = processor.editApvts();
+                                 auto st = puzzleq::readBand (ap, hit);
                                  if (result <= 10)
                                      st.shape = static_cast<puzzleq::FilterShape> (result - 1);
                                  else if (result == 100)
@@ -276,11 +385,11 @@ void EqDisplay::mouseDown (const juce::MouseEvent& e)
                                      st.spectral = true;
                                  else if (result == 102)
                                  {
-                                     puzzleq::clearBand (processor.apvts, hit);
+                                     puzzleq::clearBand (ap, hit);
                                      setSelectedBand (-1);
                                      return;
                                  }
-                                 puzzleq::writeBand (processor.apvts, hit, st);
+                                 puzzleq::writeBand (ap, hit, st);
                              });
         }
         return;
@@ -298,45 +407,53 @@ void EqDisplay::mouseDrag (const juce::MouseEvent& e)
     if (sketching)
     {
         sketchPath.lineTo (e.position);
+        sketchPts.push_back (e.position);
         repaint();
         return;
     }
-    if (dragBand < 0)
+    if (dragBand < 0 || dragOrigins.empty())
         return;
-    updateBandFromDrag (dragBand, e.position, e.mods.isShiftDown());
-    if (e.mods.isMiddleButtonDown() || e.mods.isRightButtonDown())
+
+    auto& ap = processor.editApvts();
+    const bool qGesture = e.mods.isMiddleButtonDown() || e.mods.isRightButtonDown();
+    if (dragOrigins.size() == 1)
     {
-        auto st = puzzleq::readBand (processor.apvts, dragBand);
-        st.q = juce::jlimit (puzzleq::kMinQ, puzzleq::kMaxQ,
-                             dragStartQ * std::pow (2.0f, e.getDistanceFromDragStartY() * -0.01f));
-        puzzleq::writeBand (processor.apvts, dragBand, st);
+        updateBandFromDrag (dragBand, e.position, e.mods.isShiftDown());
+        if (qGesture)
+        {
+            auto st = puzzleq::readBand (ap, dragBand);
+            st.q = juce::jlimit (puzzleq::kMinQ, puzzleq::kMaxQ,
+                                 dragStartQ * std::pow (2.0f, e.getDistanceFromDragStartY() * -0.01f));
+            puzzleq::writeBand (ap, dragBand, st);
+        }
+        return;
+    }
+
+    const float newHz = std::max (8.0f, xToHz (e.position.x));
+    const float ratio = newHz / dragOriginHz;
+    const float dDb = yToDb (e.position.y) - dragOriginDb;
+    const float qMul = qGesture ? std::pow (2.0f, e.getDistanceFromDragStartY() * -0.01f) : 1.0f;
+    for (const auto& o : dragOrigins)
+    {
+        auto st = puzzleq::readBand (ap, o.index);
+        float hz = o.hz * ratio;
+        if (e.mods.isShiftDown() || processor.uiGlobal.pianoRoll)
+            hz = puzzleq::noteToHz (puzzleq::hzToNearestNote (hz));
+        st.frequencyHz = juce::jlimit (puzzleq::kMinHz, puzzleq::kMaxHz, hz);
+        if (puzzleq::shapeUsesGain (st.shape))
+            st.gainDb = juce::jlimit (puzzleq::kMinGainDb, puzzleq::kMaxGainDb, o.gain + dDb);
+        if (qGesture)
+            st.q = juce::jlimit (puzzleq::kMinQ, puzzleq::kMaxQ, o.q * qMul);
+        puzzleq::writeBand (ap, o.index, st);
     }
 }
 
 void EqDisplay::mouseUp (const juce::MouseEvent&)
 {
     if (sketching)
-    {
-        // Interpret the stroke as HP + 1-3 bells + shelf
-        auto bounds = sketchPath.getBounds();
-        if (bounds.getWidth() > 40.0f)
-        {
-            addBandAt (xToHz (bounds.getX() + 8.0f), 0.0f);
-            auto hp = puzzleq::readBand (processor.apvts, primarySel);
-            hp.shape = puzzleq::FilterShape::LowCut;
-            hp.slopeDbOct = 12.0f;
-            puzzleq::writeBand (processor.apvts, primarySel, hp);
-
-            addBandAt (xToHz (bounds.getCentreX()), yToDb (bounds.getY() + bounds.getHeight() * 0.35f));
-            addBandAt (xToHz (bounds.getRight() - 8.0f), yToDb (bounds.getY()));
-            auto hs = puzzleq::readBand (processor.apvts, primarySel);
-            hs.shape = puzzleq::FilterShape::HighShelf;
-            puzzleq::writeBand (processor.apvts, primarySel, hs);
-        }
-        sketching = false;
-        sketchPath.clear();
-    }
+        commitSketch();
     dragBand = -1;
+    dragOrigins.clear();
 }
 
 void EqDisplay::mouseDoubleClick (const juce::MouseEvent& e)
@@ -353,12 +470,18 @@ void EqDisplay::mouseWheelMove (const juce::MouseEvent& e, const juce::MouseWhee
     const int hit = hitTestBand (e.position);
     if (hit < 0)
         return;
-    auto st = puzzleq::readBand (processor.apvts, hit);
-    if (puzzleq::shapeUsesQ (st.shape))
-        st.q = juce::jlimit (puzzleq::kMinQ, puzzleq::kMaxQ, st.q * std::pow (1.15f, wheel.deltaY * 8.0f));
-    else
-        st.slopeDbOct = juce::jlimit (puzzleq::kMinSlope, puzzleq::kMaxSlope, st.slopeDbOct + wheel.deltaY * 12.0f);
-    puzzleq::writeBand (processor.apvts, hit, st);
+    auto& ap = processor.editApvts();
+    const auto targets = selection.empty() ? std::vector<int> { hit } : selection;
+    const bool applyAll = std::find (targets.begin(), targets.end(), hit) != targets.end();
+    for (int b : (applyAll ? targets : std::vector<int> { hit }))
+    {
+        auto st = puzzleq::readBand (ap, b);
+        if (puzzleq::shapeUsesQ (st.shape))
+            st.q = juce::jlimit (puzzleq::kMinQ, puzzleq::kMaxQ, st.q * std::pow (1.15f, wheel.deltaY * 8.0f));
+        else
+            st.slopeDbOct = juce::jlimit (puzzleq::kMinSlope, puzzleq::kMaxSlope, st.slopeDbOct + wheel.deltaY * 12.0f);
+        puzzleq::writeBand (ap, b, st);
+    }
 }
 
 void EqDisplay::mouseMove (const juce::MouseEvent& e)
@@ -373,7 +496,7 @@ bool EqDisplay::keyPressed (const juce::KeyPress& key)
     if (key == juce::KeyPress::deleteKey || key == juce::KeyPress::backspaceKey)
     {
         for (int b : selection)
-            puzzleq::clearBand (processor.apvts, b);
+            puzzleq::clearBand (processor.editApvts(), b);
         setSelectedBand (-1);
         return true;
     }
@@ -556,7 +679,7 @@ void EqDisplay::paintCurve (juce::Graphics& g, juce::Rectangle<float> r)
     {
         const float t = static_cast<float> (i) / static_cast<float> (steps);
         const float hz = kMinPlotHz * std::pow (kMaxPlotHz / kMinPlotHz, t);
-        const float db = processor.engine.compositeMagnitudeDb (hz);
+        const float db = processor.editTarget().engine.compositeMagnitudeDb (hz);
         const float x = r.getX() + t * r.getWidth();
         const float y = dbToY (db);
         if (i == 0)
@@ -579,7 +702,7 @@ void EqDisplay::paintBandGhost (juce::Graphics& g, juce::Rectangle<float> r, int
     {
         const float t = static_cast<float> (i) / static_cast<float> (steps);
         const float hz = kMinPlotHz * std::pow (kMaxPlotHz / kMinPlotHz, t);
-        const float db = processor.engine.bandMagnitudeDb (band, hz);
+        const float db = processor.editTarget().engine.bandMagnitudeDb (band, hz);
         const float x = r.getX() + t * r.getWidth();
         const float y = dbToY (db);
         if (i == 0) ghost.startNewSubPath (x, y);
@@ -623,7 +746,7 @@ void EqDisplay::paintHandles (juce::Graphics& g)
 
     for (int i = 0; i < puzzleq::kMaxBands; ++i)
     {
-        const auto& b = processor.uiBands[static_cast<size_t> (i)];
+        const auto& b = processor.editTarget().uiBands[static_cast<size_t> (i)];
         if (! b.active)
             continue;
         const auto p = bandToPoint (b);
@@ -636,7 +759,7 @@ void EqDisplay::paintHandles (juce::Graphics& g)
 
         if (std::abs (b.dynRangeDb) > 0.01f)
         {
-            const float extra = processor.engine.dynamicGainDb (i);
+            const float extra = processor.editTarget().engine.dynamicGainDb (i);
             const float ring = rad + 3.0f + std::abs (extra) * 0.25f;
             g.setColour (juce::Colour (0xffff6b7a).withAlpha (0.85f));
             g.drawEllipse (p.x - ring, p.y - ring, ring * 2.0f, ring * 2.0f, 1.4f);
@@ -685,8 +808,10 @@ void EqDisplay::paint (juce::Graphics& g)
     g.setFont (11.0f);
     const juce::String hint = hoverBand >= 0
         ? ("Band " + juce::String (hoverBand + 1) + "  "
-           + juce::String (processor.uiBands[static_cast<size_t> (hoverBand)].frequencyHz, 1) + " Hz")
-        : "Double-click to add  ·  Shift-drag to sketch  ·  Cmd-click spectrum grab  ·  Alt-click solo";
+           + juce::String (processor.editTarget().uiBands[static_cast<size_t> (hoverBand)].frequencyHz, 1) + " Hz")
+        : (processor.isEditingRemote()
+               ? ("Editing " + processor.editTarget().instanceName + "  ·  Double-click add  ·  Shift-drag sketch  ·  Cmd-click grab")
+               : "Double-click to add  ·  Shift-drag to sketch  ·  Cmd-click spectrum grab  ·  Alt-click solo");
     g.drawText (hint, getLocalBounds().removeFromTop (16).reduced (10, 0), juce::Justification::centredLeft);
 }
 

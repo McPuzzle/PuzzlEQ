@@ -118,5 +118,15 @@ bool SpectrumAnalyzer::consumePeaks (std::vector<float>& peakDbOut, bool pre)
     return true;
 }
 
+bool SpectrumAnalyzer::copyCurrent (std::vector<float>& magDbOut, bool pre) const
+{
+    auto& ch = pre ? preCh : postCh;
+    std::lock_guard<std::mutex> lock (ch.mutex);
+    if (ch.magSmooth.size() < 8)
+        return false;
+    magDbOut = ch.magSmooth;
+    return true;
+}
+
 
 } // namespace puzzleq
