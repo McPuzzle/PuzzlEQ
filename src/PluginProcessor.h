@@ -17,6 +17,8 @@ public:
     void releaseResources() override;
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    void processBlockBypassed (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
+    bool supportsDoublePrecisionProcessing() const override { return false; }
 
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
@@ -105,6 +107,8 @@ private:
     juce::String midiLearnId;
     std::array<int, 128> ccMap {}; // CC -> parameter index, -1 none
     double suppressHostPullUntilMs = 0.0;
+    int lastReportedLatency = -1;
+    std::vector<float> specScratch;
 
     static std::mutex registryMutex;
     static std::vector<PuzzlEqAudioProcessor*> registry;

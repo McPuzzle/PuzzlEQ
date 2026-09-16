@@ -11,6 +11,7 @@
 #include <vector>
 #include <cmath>
 #include <algorithm>
+#include <chrono>
 
 using Catch::Matchers::WithinAbs;
 using namespace puzzleq;
@@ -208,4 +209,79 @@ TEST_CASE ("dbToGain is the standard mapping")
 {
     REQUIRE_THAT (dbToGain (0.0f), WithinAbs (1.0f, 1.0e-5f));
     REQUIRE_THAT (dbToGain (6.0f), WithinAbs (1.99526f, 0.02f));
+}
+
+TEST_CASE ("engine stays silent with no active bands")
+{
+    EqEngine e;
+    e.prepare (48000.0f, 64);
+    std::array<BandState, kMaxBands> bands {};
+    e.setBands (bands);
+    float L[64] = {}, R[64] = {};
+    e.process (L, R, nullptr, nullptr, 64);
+    float peak = 0.0f;
+    for (int i = 0; i < 64; ++i)
+        peak = std::max (peak, std::max (std::abs (L[i]), std::abs (R[i])));
+    REQUIRE (peak < 1.0e-6f);
+}
+
+TEST_CASE ("engine chunks blocks larger than prepare size")
+{
+    EqEngine e;
+    e.prepare (48000.0f, 64);
+    std::array<BandState, kMaxBands> bands {};
+    bands[0].active = true;
+    bands[0].enabled = true;
+    bands[0].shape = FilterShape::Bell;
+    bands[0].frequencyHz = 1000.0f;
+    bands[0].gainDb = 3.0f;
+    bands[0].q = 1.0f;
+    e.setBands (bands);
+
+    std::vector<float> L (4096, 0.0f), R (4096, 0.0f);
+    for (int i = 0; i < 4096; ++i)
+        L[static_cast<size_t> (i)] = R[static_cast<size_t> (i)] = 0.1f * std::sin (0.1f * static_cast<float> (i));
+    e.process (L.data(), R.data(), nullptr, nullptr, 4096);
+    float peak = 0.0f;
+    for (float s : L)
+    {
+        REQUIRE (std::isfinite (s));
+        peak = std::max (peak, std::abs (s));
+    }
+    REQUIRE (peak < 2.0f);
+}
+
+TEST_CASE ("idle engine is cheaper than a 24-band linear-phase path")
+{
+    EqEngine idle, busy;
+    idle.prepare (48000.0f, 128);
+    busy.prepare (48000.0f, 128);
+    std::array<BandState, kMaxBands> bands {};
+    for (int i = 0; i < 8; ++i)
+    {
+        bands[static_cast<size_t> (i)].active = true;
+        bands[static_cast<size_t> (i)].enabled = true;
+        bands[static_cast<size_t> (i)].shape = FilterShape::Bell;
+        bands[static_cast<size_t> (i)].frequencyHz = 80.0f * std::pow (1.8f, static_cast<float> (i));
+        bands[static_cast<size_t> (i)].gainDb = 2.0f;
+        bands[static_cast<size_t> (i)].q = 1.0f;
+    }
+    busy.setBands (bands);
+    GlobalState g;
+    g.mode = ProcessingMode::LinearPhase;
+    busy.setGlobal (g);
+
+    std::vector<float> L (128, 0.05f), R (128, 0.05f);
+    const auto t0 = std::chrono::steady_clock::now();
+    for (int i = 0; i < 400; ++i)
+        idle.process (L.data(), R.data(), nullptr, nullptr, 128);
+    const auto tIdle = std::chrono::steady_clock::now() - t0;
+
+    std::fill (L.begin(), L.end(), 0.05f);
+    std::fill (R.begin(), R.end(), 0.05f);
+    const auto t1 = std::chrono::steady_clock::now();
+    for (int i = 0; i < 400; ++i)
+        busy.process (L.data(), R.data(), nullptr, nullptr, 128);
+    const auto tBusy = std::chrono::steady_clock::now() - t1;
+    REQUIRE (tIdle < tBusy);
 }

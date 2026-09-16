@@ -38,9 +38,15 @@ std::vector<PuzzlEqAudioProcessor*> PuzzlEqAudioProcessor::allInstances()
 
 void PuzzlEqAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
-    engine.prepare (static_cast<float> (sampleRate), samplesPerBlock);
-    setLatencySamples (engine.latencySamples());
+    const double sr = (sampleRate > 1000.0 && sampleRate < 384000.0) ? sampleRate : 48000.0;
+    const int hostBlock = std::max (samplesPerBlock, 64);
+    // Hosts (FL Studio, Ableton, Reaper) often grow the buffer without a new prepare.
+    const int guarded = std::max (hostBlock * 2, 4096);
+    engine.prepare (static_cast<float> (sr), guarded);
+    lastReportedLatency = engine.latencySamples();
+    setLatencySamples (lastReportedLatency);
     outputPeakL = outputPeakR = 0.0f;
+    specScratch.reserve (4096);
 }
 
 void PuzzlEqAudioProcessor::releaseResources()
@@ -54,12 +60,21 @@ bool PuzzlEqAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) 
     const auto mainOut = layouts.getMainOutputChannelSet();
     if (mainIn.isDisabled() || mainOut.isDisabled())
         return false;
-    if (mainIn.size() < 1 || mainOut.size() < 1)
-        return false;
     if (mainIn != mainOut)
         return false;
-    return mainIn == juce::AudioChannelSet::mono()
-        || mainIn == juce::AudioChannelSet::stereo();
+    if (mainIn != juce::AudioChannelSet::mono()
+        && mainIn != juce::AudioChannelSet::stereo())
+        return false;
+
+    if (layouts.inputBuses.size() > 1)
+    {
+        const auto sc = layouts.getChannelSet (true, 1);
+        if (! sc.isDisabled()
+            && sc != juce::AudioChannelSet::mono()
+            && sc != juce::AudioChannelSet::stereo())
+            return false;
+    }
+    return true;
 }
 
 void PuzzlEqAudioProcessor::markLocalEdit()
@@ -137,7 +152,13 @@ void PuzzlEqAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     midi.clear();
 
     const int n = buffer.getNumSamples();
+    if (n <= 0)
+        return;
+
     auto main = getBusBuffer (buffer, true, 0);
+    if (main.getNumChannels() < 1)
+        return;
+
     float* l = main.getWritePointer (0);
     float* r = main.getNumChannels() > 1 ? main.getWritePointer (1) : l;
 
@@ -184,7 +205,13 @@ void PuzzlEqAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     }
 
     engine.process (l, r, scL, scR, n);
-    setLatencySamples (engine.latencySamples());
+
+    const int lat = engine.latencySamples();
+    if (lat != lastReportedLatency)
+    {
+        lastReportedLatency = lat;
+        setLatencySamples (lat);
+    }
 
     // Clear extra output channels
     for (int ch = getMainBusNumInputChannels(); ch < getMainBusNumOutputChannels(); ++ch)
@@ -199,12 +226,33 @@ void PuzzlEqAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     outputPeakL = pkL;
     outputPeakR = pkR;
 
-    std::vector<float> spec;
-    if (engine.analyzer().consume (spec, false))
+    if (engine.analyzer().consume (specScratch, false))
     {
         std::lock_guard<std::mutex> lock (specLock);
-        publishedPost = std::move (spec);
+        publishedPost.swap (specScratch);
     }
+}
+
+void PuzzlEqAudioProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
+{
+    juce::ScopedNoDenormals noDenormals;
+    midi.clear();
+    const int n = buffer.getNumSamples();
+    if (n <= 0)
+        return;
+    auto main = getBusBuffer (buffer, true, 0);
+    if (main.getNumChannels() < 1)
+        return;
+    float pk = 0.0f;
+    for (int ch = 0; ch < main.getNumChannels(); ++ch)
+    {
+        auto* d = main.getReadPointer (ch);
+        for (int i = 0; i < n; ++i)
+            pk = std::max (pk, std::abs (d[i]));
+    }
+    inputPeakL = inputPeakR = outputPeakL = outputPeakR = pk;
+    for (int ch = getMainBusNumInputChannels(); ch < getMainBusNumOutputChannels(); ++ch)
+        buffer.clear (ch, 0, n);
 }
 
 void PuzzlEqAudioProcessor::getStateInformation (juce::MemoryBlock& destData)

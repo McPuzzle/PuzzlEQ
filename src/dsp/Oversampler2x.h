@@ -31,14 +31,12 @@ public:
         downR.reset();
     }
 
+    int capacity() const noexcept { return static_cast<int> (bufL.size() / 2); }
+
     void upsample (const float* l, const float* r, int n)
     {
-        const size_t need = static_cast<size_t> (n * 2);
-        if (bufL.size() < need)
-        {
-            bufL.resize (need, 0.0f);
-            bufR.resize (need, 0.0f);
-        }
+        // Never allocate on the audio thread. Caller must chunk to capacity().
+        n = std::min (n, capacity());
         for (int i = 0; i < n; ++i)
         {
             bufL[static_cast<size_t> (i * 2)]     = upL.process (l[i] * 2.0f);
@@ -50,6 +48,7 @@ public:
 
     void downsample (float* l, float* r, int n)
     {
+        n = std::min (n, capacity());
         for (int i = 0; i < n; ++i)
         {
             const float aL = downL.process (bufL[static_cast<size_t> (i * 2)]);

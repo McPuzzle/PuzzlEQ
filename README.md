@@ -73,3 +73,15 @@ cmake --build build --target PuzzlEQ_Standalone PuzzlEQ_VST3 PuzzlEQ_CLAP PuzzlE
 Linux needs the usual JUCE packages (`libasound2-dev`, `libfreetype6-dev`, X11 cursor/randr/inerama/composite, GL).
 
 AU is produced only when configuring on macOS.
+
+## Performance
+
+PuzzlEQ is built for real-time hosts: no heap allocations on the audio thread, denormals flushed, and idle instances skip the oversampler.
+
+**Formats:** VST3, AU (macOS), CLAP, Standalone. AAX / Pro Tools is not shipped. Match the installer to the OS (Windows zip on Windows, macOS zip/pkg on Mac).
+
+**Buffer size:** In the DAW, start at **256–512 samples** at 44.1/48 kHz. Raise the buffer if you hear clicks or dropouts; lower it only if you need less monitoring latency. Linear Phase and Spectral bands cost more CPU than Zero Latency.
+
+**Hardware:** A recent dual-core CPU and 8 GB RAM is enough for a few instances. Many instances, Maximum linear-phase resolution, or lots of dynamic/spectral bands need more headroom.
+
+**Updates:** Use the latest GitHub Release so the DAW loads a binary that matches current Windows/macOS. After installing, fully quit the DAW and rescan plugins.

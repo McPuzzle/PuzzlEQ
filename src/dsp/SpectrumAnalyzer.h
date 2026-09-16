@@ -16,6 +16,8 @@ public:
     void reset();
 
     void push (const float* left, const float* right, int numSamples, bool pre);
+    // Run at most one FFT hop per call. Call from the audio thread after push().
+    void analyzeOneHop (bool pre);
     bool consume (std::vector<float>& magDbOut, bool pre);
     bool consumePeaks (std::vector<float>& peakDbOut, bool pre);
 

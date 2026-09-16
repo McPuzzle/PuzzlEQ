@@ -26,37 +26,42 @@ int latencyForResolution (LinearResolution res) noexcept
 void LinearPhaseEq::prepare (float sampleRate, LinearResolution res)
 {
     sr = sampleRate;
-    setResolution (res);
-}
-
-void LinearPhaseEq::setResolution (LinearResolution res)
-{
-    resolution = res;
-    n = fftSizeForResolution (res);
-    hop = n / 2;
-    fft.setup (n);
-    H.assign (static_cast<size_t> (n / 2 + 1), 1.0f);
-    re.assign (static_cast<size_t> (n), 0.0f);
-    im.assign (static_cast<size_t> (n), 0.0f);
-    time.assign (static_cast<size_t> (n), 0.0f);
-    hann.assign (static_cast<size_t> (n), 0.0f);
-    for (int i = 0; i < n; ++i)
-    {
-        const float h = 0.5f * (1.0f - std::cos (2.0f * 3.14159265f
-            * static_cast<float> (i) / static_cast<float> (n)));
-        hann[static_cast<size_t> (i)] = std::sqrt (std::max (h, 0.0f));
-    }
-
+    const int maxN = fftSizeForResolution (LinearResolution::Maximum);
+    fft.setup (maxN);
+    H.assign (static_cast<size_t> (maxN / 2 + 1), 1.0f);
+    re.assign (static_cast<size_t> (maxN), 0.0f);
+    im.assign (static_cast<size_t> (maxN), 0.0f);
+    time.assign (static_cast<size_t> (maxN), 0.0f);
+    hann.assign (static_cast<size_t> (maxN), 0.0f);
     auto setupCh = [&] (Channel& ch)
     {
-        ch.hist.assign (static_cast<size_t> (n), 0.0f);
-        ch.ola.assign (static_cast<size_t> (n), 0.0f);
+        ch.hist.assign (static_cast<size_t> (maxN), 0.0f);
+        ch.ola.assign (static_cast<size_t> (maxN), 0.0f);
         ch.histWrite = 0;
         ch.collected = 0;
         ch.olaPos = 0;
     };
     setupCh (chL);
     setupCh (chR);
+    n = 0;
+    setResolution (res);
+}
+
+void LinearPhaseEq::setResolution (LinearResolution res)
+{
+    resolution = res;
+    const int newN = fftSizeForResolution (res);
+    if (newN == n)
+        return;
+    n = newN;
+    hop = n / 2;
+    for (int i = 0; i < n; ++i)
+    {
+        const float h = 0.5f * (1.0f - std::cos (2.0f * 3.14159265f
+            * static_cast<float> (i) / static_cast<float> (n)));
+        hann[static_cast<size_t> (i)] = std::sqrt (std::max (h, 0.0f));
+    }
+    reset();
     dirty = true;
 }
 

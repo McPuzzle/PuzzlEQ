@@ -32,6 +32,7 @@ public:
     }
 
     void process (float* left, float* right, const float* sideL, const float* sideR, int numSamples);
+    int maxBlockSize() const noexcept { return maxBlock; }
 
     SpectrumAnalyzer& analyzer() noexcept { return spectrum; }
     EqMatch& matcher() noexcept { return match; }
@@ -58,6 +59,8 @@ private:
     void processIir (float* left, float* right, const float* sideL, const float* sideR, int numSamples);
     bool usesTpt (const BandState& b) const noexcept;
     uint64_t bandHash() const noexcept;
+    void rebuildActiveList() noexcept;
+    bool hasIirWork() const noexcept { return numIir > 0; }
 
     float sr = 48000.0f;
     int maxBlock = 512;
@@ -81,6 +84,9 @@ private:
     Oversampler2x oversampler;
     std::vector<float> scUpL, scUpR;
     std::array<float, kMaxBands> tptFreq {}, tptQ {};
+    std::array<int, kMaxBands> activeIir {};
+    int numIir = 0;
+    bool anySpectral = false;
     uint64_t lastLpHash = 0;
 
     float autoGainDb = 0.0f;

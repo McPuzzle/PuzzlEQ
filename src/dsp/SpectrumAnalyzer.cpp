@@ -42,21 +42,28 @@ void SpectrumAnalyzer::push (const float* left, const float* right, int numSampl
 
     auto& ch = pre ? preCh : postCh;
     const int n = fft.size();
-    if (n <= 0)
+    if (n <= 0 || left == nullptr)
         return;
 
     for (int i = 0; i < numSamples; ++i)
     {
-        const float s = 0.5f * (left[i] + right[i]);
+        const float s = 0.5f * (left[i] + (right != nullptr ? right[i] : left[i]));
         ch.fifo[static_cast<size_t> (ch.fifoWrite)] = s;
         ch.fifoWrite = (ch.fifoWrite + 1) % n;
         ch.fifoFilled = std::min (ch.fifoFilled + 1, n);
-        if (ch.fifoFilled >= n)
-        {
-            processFifo (ch);
-            ch.fifoFilled = (n * 3) / 4; // hop n/4 → 75% overlap, ~21 ms at 48 kHz
-        }
     }
+}
+
+void SpectrumAnalyzer::analyzeOneHop (bool pre)
+{
+    if (frozen)
+        return;
+    auto& ch = pre ? preCh : postCh;
+    const int n = fft.size();
+    if (n <= 0 || ch.fifoFilled < n)
+        return;
+    processFifo (ch);
+    ch.fifoFilled = (n * 3) / 4; // hop n/4 → 75% overlap
 }
 
 void SpectrumAnalyzer::processFifo (Channel& ch)
@@ -75,12 +82,12 @@ void SpectrumAnalyzer::processFifo (Channel& ch)
     const float a = std::clamp (smoothing, 0.05f, 0.98f);
     const float tilt = tiltDbOct;
 
-    std::lock_guard<std::mutex> lock (ch.mutex);
+    std::unique_lock<std::mutex> lock (ch.mutex, std::try_to_lock);
+    if (! lock.owns_lock())
+        return;
+
     if (static_cast<int> (ch.magSmooth.size()) != bins)
-    {
-        ch.magSmooth.assign (static_cast<size_t> (bins), -90.0f);
-        ch.peakHold.assign (static_cast<size_t> (bins), -90.0f);
-    }
+        return;
 
     for (int b = 0; b < bins; ++b)
     {

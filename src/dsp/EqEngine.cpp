@@ -45,6 +45,7 @@ void EqEngine::prepare (float sampleRate, int block)
     lastSolo = -99;
     scUpL.assign (static_cast<size_t> (maxBlock * 2), 0.0f);
     scUpR.assign (static_cast<size_t> (maxBlock * 2), 0.0f);
+    rebuildActiveList();
 }
 
 void EqEngine::reset()
@@ -93,6 +94,25 @@ uint64_t EqEngine::bandHash() const noexcept
 void EqEngine::setBands (const std::array<BandState, kMaxBands>& bands)
 {
     currentBands = bands;
+    rebuildActiveList();
+}
+
+void EqEngine::rebuildActiveList() noexcept
+{
+    numIir = 0;
+    anySpectral = false;
+    for (int i = 0; i < kMaxBands; ++i)
+    {
+        const auto& b = currentBands[static_cast<size_t> (i)];
+        if (! b.isProcessing())
+            continue;
+        if (b.spectral)
+        {
+            anySpectral = true;
+            continue;
+        }
+        activeIir[static_cast<size_t> (numIir++)] = i;
+    }
 }
 
 void EqEngine::setGlobal (const GlobalState& g)
@@ -120,20 +140,34 @@ int EqEngine::latencySamples() const noexcept
 
 float EqEngine::compositeMagnitudeDb (float hz) const
 {
+    if (currentGlobal.mode == ProcessingMode::LinearPhase)
+    {
+        const float mag = linear.magnitudeAt (hz);
+        return mag > 1.0e-12f ? 20.0f * std::log10 (mag) : -240.0f;
+    }
+
     std::complex<double> h { 1.0, 0.0 };
     const bool natural = currentGlobal.mode == ProcessingMode::NaturalPhase;
-    for (int i = 0; i < kMaxBands; ++i)
+    const float rate = sr * 2.0f;
+    for (int ai = 0; ai < numIir; ++ai)
     {
-        const auto& b = currentBands[static_cast<size_t> (i)];
-        if (! b.isProcessing())
-            continue;
+        const int i = activeIir[static_cast<size_t> (ai)];
         if (currentGlobal.soloBand >= 0 && currentGlobal.soloBand != i)
             continue;
-        Cascade c;
-        const float rate = currentGlobal.mode == ProcessingMode::LinearPhase ? sr : sr * 2.0f;
-        designBand (b.shape, b.frequencyHz, b.effectiveGain (currentGlobal.gainScale) + dynGainDb[static_cast<size_t> (i)],
-                    b.q, b.slopeDbOct, b.brickwall, rate, natural, c);
-        h *= cascadeResponse (c, hz, rate);
+        const auto& b = currentBands[static_cast<size_t> (i)];
+        const auto& cas = casL[static_cast<size_t> (i)];
+        if (cas.numSections > 0 && ! usesTpt (b))
+        {
+            h *= cascadeResponse (cas, hz, rate);
+        }
+        else
+        {
+            Cascade c;
+            designBand (b.shape, b.frequencyHz,
+                        b.effectiveGain (currentGlobal.gainScale) + dynGainDb[static_cast<size_t> (i)],
+                        b.q, b.slopeDbOct, b.brickwall, rate, natural, c);
+            h *= cascadeResponse (c, hz, rate);
+        }
     }
     const double mag = std::abs (h);
     if (mag < 1.0e-12)
@@ -196,9 +230,9 @@ void EqEngine::refreshCascades (int bandIndex, float extraGainDb)
 
 void EqEngine::processIir (float* left, float* right, const float* sideL, const float* sideR, int numSamples)
 {
-    for (int b = 0; b < kMaxBands; ++b)
+    for (int ai = 0; ai < numIir; ++ai)
     {
-        const size_t s = static_cast<size_t> (b);
+        const size_t s = static_cast<size_t> (activeIir[static_cast<size_t> (ai)]);
         const auto& band = currentBands[s];
         smFreq[s].target = band.frequencyHz;
         smQ[s].target = band.q;
@@ -214,12 +248,11 @@ void EqEngine::processIir (float* left, float* right, const float* sideL, const 
         float r = right[i];
         float listenSample = 0.0f;
 
-        for (int b = 0; b < kMaxBands; ++b)
+        for (int ai = 0; ai < numIir; ++ai)
         {
+            const int b = activeIir[static_cast<size_t> (ai)];
             const size_t s = static_cast<size_t> (b);
             const auto& band = currentBands[s];
-            if (! band.isProcessing() || band.spectral)
-                continue;
             if (currentGlobal.soloBand >= 0 && currentGlobal.soloBand != b)
                 continue;
 
@@ -382,19 +415,41 @@ void EqEngine::processIir (float* left, float* right, const float* sideL, const 
 
 void EqEngine::process (float* left, float* right, const float* sideL, const float* sideR, int numSamples)
 {
+    if (left == nullptr || numSamples <= 0)
+        return;
+    if (right == nullptr)
+        right = left;
+
+    if (numSamples > maxBlock)
+    {
+        int offset = 0;
+        while (offset < numSamples)
+        {
+            const int chunk = std::min (maxBlock, numSamples - offset);
+            const float* scL = sideL != nullptr ? sideL + offset : nullptr;
+            const float* scR = sideR != nullptr ? sideR + offset : nullptr;
+            process (left + offset, right + offset, scL, scR, chunk);
+            offset += chunk;
+        }
+        return;
+    }
+
     spectrum.push (left, right, numSamples, true);
 
     if (currentGlobal.mode == ProcessingMode::LinearPhase)
     {
-        const uint64_t h = bandHash();
-        if (h != lastLpHash)
+        if (numIir > 0)
         {
-            linear.updateFromBands (currentBands, currentGlobal.gainScale, currentGlobal.soloBand, false);
-            lastLpHash = h;
+            const uint64_t h = bandHash();
+            if (h != lastLpHash)
+            {
+                linear.updateFromBands (currentBands, currentGlobal.gainScale, currentGlobal.soloBand, false);
+                lastLpHash = h;
+            }
+            linear.process (left, right, numSamples);
         }
-        linear.process (left, right, numSamples);
     }
-    else
+    else if (numIir > 0)
     {
         oversampler.upsample (left, right, numSamples);
         const float* scL2 = nullptr;
@@ -402,27 +457,25 @@ void EqEngine::process (float* left, float* right, const float* sideL, const flo
         if (sideL != nullptr)
         {
             const int n2 = numSamples * 2;
-            if (static_cast<int> (scUpL.size()) < n2)
+            if (n2 <= static_cast<int> (scUpL.size()))
             {
-                scUpL.resize (static_cast<size_t> (n2), 0.0f);
-                scUpR.resize (static_cast<size_t> (n2), 0.0f);
+                for (int s = 0; s < numSamples; ++s)
+                {
+                    scUpL[static_cast<size_t> (s * 2)]     = sideL[s];
+                    scUpL[static_cast<size_t> (s * 2 + 1)] = sideL[s];
+                    const float srS = sideR != nullptr ? sideR[s] : sideL[s];
+                    scUpR[static_cast<size_t> (s * 2)]     = srS;
+                    scUpR[static_cast<size_t> (s * 2 + 1)] = srS;
+                }
+                scL2 = scUpL.data();
+                scR2 = scUpR.data();
             }
-            for (int s = 0; s < numSamples; ++s)
-            {
-                scUpL[static_cast<size_t> (s * 2)]     = sideL[s];
-                scUpL[static_cast<size_t> (s * 2 + 1)] = sideL[s];
-                const float srS = sideR != nullptr ? sideR[s] : sideL[s];
-                scUpR[static_cast<size_t> (s * 2)]     = srS;
-                scUpR[static_cast<size_t> (s * 2 + 1)] = srS;
-            }
-            scL2 = scUpL.data();
-            scR2 = scUpR.data();
         }
         processIir (oversampler.left2(), oversampler.right2(), scL2, scR2, numSamples * 2);
         oversampler.downsample (left, right, numSamples);
     }
 
-    if (spectral.hasWork (currentBands))
+    if (anySpectral && spectral.hasWork (currentBands))
         spectral.process (left, right, numSamples, currentBands, currentGlobal.gainScale);
 
     // Intelligent solo: isolate the soloed band's frequency region
@@ -454,12 +507,12 @@ void EqEngine::process (float* left, float* right, const float* sideL, const flo
         }
     }
 
-    if (currentGlobal.autoGain)
+    if (currentGlobal.autoGain && (numIir > 0 || anySpectral))
     {
         float acc = 0.0f, wacc = 0.0f;
-        for (int k = 0; k < 24; ++k)
+        for (int k = 0; k < 12; ++k)
         {
-            const float t = (static_cast<float> (k) + 0.5f) / 24.0f;
+            const float t = (static_cast<float> (k) + 0.5f) / 12.0f;
             const float hz = 20.0f * std::pow (1000.0f, t);
             const float mag = dbToGain (compositeMagnitudeDb (hz));
             const float w = 1.0f / std::sqrt (hz);
@@ -488,6 +541,8 @@ void EqEngine::process (float* left, float* right, const float* sideL, const flo
     }
 
     spectrum.push (left, right, numSamples, false);
+    spectrum.analyzeOneHop (true);
+    spectrum.analyzeOneHop (false);
 }
 
 } // namespace puzzleq
