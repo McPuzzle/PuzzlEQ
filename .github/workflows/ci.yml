@@ -1,0 +1,35 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build clang pkg-config \
+            libasound2-dev libfreetype6-dev libx11-dev libxinerama-dev \
+            libxrandr-dev libxcursor-dev libxcomposite-dev libgl1-mesa-dev \
+            libfontconfig1-dev xvfb unzip curl
+          ./scripts/fetch-deps.sh
+      - name: Configure
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+      - name: Build tests and VST3
+        run: cmake --build build --target PuzzlEQTests PuzzlEQ_VST3 --parallel
+      - name: Catch2
+        run: ./build/PuzzlEQTests --reporter compact
+      - name: pluginval
+        run: |
+          set -euo pipefail
+          curl -L -o pluginval.zip https://github.com/Tracktion/pluginval/releases/download/v1.0.4/pluginval_Linux.zip
+          unzip -o pluginval.zip
+          chmod +x pluginval
+          VST3=$(find build -name 'PuzzlEQ.vst3' -type d | head -n 1)
+          test -n "$VST3"
+          xvfb-run -a ./pluginval --strictness-level 5 --validate-in-process \
+            --skip-gui-tests --timeout-ms 240000 "$VST3"

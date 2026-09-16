@@ -17,8 +17,8 @@ A premium parametric equalizer plugin. Original DSP and UI. Not a clone of any c
 - Spectrum analyzer (pre/post), parabolic Spectrum Grab, piano roll, intelligent solo
 - Auto Gain, Gain Scale, Gentle / Warm character
 - Residual EQ Match (Cap Src / Cap Ref / Match) plus Match Overlay from another instance
-- Undo / redo, A/B, MIDI Learn, instance clipboard
 - Interactive curve editor: multi-select drag, EQ Sketch, text entry, Hz/note readout, fullscreen
+- Host-aware Bypass, undo / redo, A/B, MIDI Learn, instance clipboard
 - Remote instance edit (Edit Inst writes into another PuzzlEQ on the same host)
 - Factory presets (vocal, mix bus, master, de-mud, air, telephone, kick, snare, guitar)
 - Instance list with spectrum collision overlay

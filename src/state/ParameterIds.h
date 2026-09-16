@@ -11,6 +11,7 @@ inline juce::String bandId (int band, const char* suffix)
 }
 
 namespace pid {
+inline constexpr const char* bypass       = "bypass";
 inline constexpr const char* outputGain   = "outputGain";
 inline constexpr const char* processingMode = "processingMode";
 inline constexpr const char* lpResolution = "lpResolution";

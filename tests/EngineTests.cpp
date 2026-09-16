@@ -180,6 +180,30 @@ TEST_CASE ("EqEngine processes stereo plus sidechain at 2x without exploding")
     REQUIRE (std::isfinite (e.compositeMagnitudeDb (1000.0f)));
 }
 
+TEST_CASE ("zero-latency mode latency equals the 2x oversampler")
+{
+    Oversampler2x os;
+    os.prepare (48000.0f, 64);
+    EqEngine e;
+    e.prepare (48000.0f, 64);
+    GlobalState g;
+    g.mode = ProcessingMode::ZeroLatency;
+    e.setGlobal (g);
+    REQUIRE (e.latencySamples() == os.latency());
+}
+
+TEST_CASE ("linear-phase mode reports additional latency")
+{
+    EqEngine e;
+    e.prepare (48000.0f, 64);
+    GlobalState g;
+    g.mode = ProcessingMode::LinearPhase;
+    g.lpResolution = LinearResolution::Low;
+    e.setGlobal (g);
+    REQUIRE (e.latencySamples() >= e.linearPhase().latencySamples());
+    REQUIRE (e.latencySamples() > 0);
+}
+
 TEST_CASE ("dbToGain is the standard mapping")
 {
     REQUIRE_THAT (dbToGain (0.0f), WithinAbs (1.0f, 1.0e-5f));

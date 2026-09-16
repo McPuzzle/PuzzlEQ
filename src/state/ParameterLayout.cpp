@@ -79,6 +79,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
                    juce::NormalisableRange<float> (kMinHz, kMaxHz, 0.01f, 0.3f), 20000.0f, "Hz");
     }
 
+    addBool (pid::bypass, "Bypass", false);
     addFloat (pid::outputGain, "Output Gain",
               juce::NormalisableRange<float> (-24.0f, 24.0f, 0.01f), 0.0f, "dB");
     addChoice (pid::processingMode, "Processing Mode",

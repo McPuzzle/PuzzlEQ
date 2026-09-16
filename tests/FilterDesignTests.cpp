@@ -170,6 +170,29 @@ TEST_CASE ("Parabolic peak interpolation is exact on a quadratic")
     REQUIRE_THAT (SpectrumAnalyzer::parabolicDelta (ym1, y0, yp1), WithinAbs (0.3f, 0.02f));
 }
 
+TEST_CASE ("tiny inputs stay finite (no denormal blow-up)")
+{
+    Cascade c;
+    designBand (FilterShape::Bell, 1000.0f, 6.0f, 1.0f, 12.0f, false, 48000.0f, false, c);
+    (void) c.process (1.0e-20f);
+    for (int i = 0; i < 8192; ++i)
+    {
+        const float y = c.process (0.0f);
+        REQUIRE (std::isfinite (y));
+        if (i > 4096)
+            REQUIRE (std::abs (y) < 1.0e-6f);
+    }
+}
+
+TEST_CASE ("brickwall high-cut is steeper than 96 dB/oct at 12 dB labelled slope")
+{
+    Cascade regular, brick;
+    designBand (FilterShape::HighCut, 2000.0f, 0.0f, 0.707f, 12.0f, false, 48000.0f, false, regular);
+    designBand (FilterShape::HighCut, 2000.0f, 0.0f, 0.707f, 12.0f, true, 48000.0f, false, brick);
+    REQUIRE (cascadeMagnitudeDb (brick, 8000.0, 48000.0)
+             < cascadeMagnitudeDb (regular, 8000.0, 48000.0) - 10.0);
+}
+
 TEST_CASE ("FFT inverse restores a sine")
 {
     Fft fft;

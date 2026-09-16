@@ -22,7 +22,7 @@ private:
 
     juce::ComboBox mode, resolution, character, displayRange, analyzerRange;
     juce::Slider output, gainScale, tilt, speed;
-    juce::ToggleButton autoGain, phaseInvert, piano, freeze, analyzerPre;
+    juce::ToggleButton autoGain, bypass, phaseInvert, piano, freeze, analyzerPre;
     juce::ComboBox presetBox, instanceBox;
     juce::TextButton btnA { "A" }, btnB { "B" }, btnCopy { "Copy" }, btnPaste { "Paste" };
     juce::TextButton btnMatchSrc { "Cap Src" }, btnMatchRef { "Cap Ref" }, btnMatch { "Match" };
@@ -37,5 +37,5 @@ private:
 
     std::unique_ptr<ComboAtt> modeAtt, resAtt, charAtt, dispAtt, anRangeAtt;
     std::unique_ptr<SliderAtt> outAtt, scaleAtt, tiltAtt, speedAtt;
-    std::unique_ptr<ButtonAtt> autoAtt, phaseAtt, pianoAtt, freezeAtt, preAtt;
+    std::unique_ptr<ButtonAtt> autoAtt, bypassAtt, phaseAtt, pianoAtt, freezeAtt, preAtt;
 };

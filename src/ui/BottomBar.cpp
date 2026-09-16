@@ -22,6 +22,7 @@ BottomBar::BottomBar (PuzzlEqAudioProcessor& proc)
     speed.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
 
     autoGain.setButtonText ("Auto Gain");
+    bypass.setButtonText ("Bypass");
     phaseInvert.setButtonText ("Ø");
     piano.setButtonText ("Piano");
     freeze.setButtonText ("Freeze");
@@ -38,6 +39,7 @@ BottomBar::BottomBar (PuzzlEqAudioProcessor& proc)
     tiltAtt     = std::make_unique<SliderAtt> (a, puzzleq::pid::analyzerTilt, tilt);
     speedAtt    = std::make_unique<SliderAtt> (a, puzzleq::pid::analyzerSpeed, speed);
     autoAtt     = std::make_unique<ButtonAtt> (a, puzzleq::pid::autoGain, autoGain);
+    bypassAtt   = std::make_unique<ButtonAtt> (a, puzzleq::pid::bypass, bypass);
     phaseAtt    = std::make_unique<ButtonAtt> (a, puzzleq::pid::phaseInvert, phaseInvert);
     pianoAtt    = std::make_unique<ButtonAtt> (a, puzzleq::pid::pianoRoll, piano);
     freezeAtt   = std::make_unique<ButtonAtt> (a, puzzleq::pid::analyzerFreeze, freeze);
@@ -169,7 +171,7 @@ BottomBar::BottomBar (PuzzlEqAudioProcessor& proc)
     for (auto* c : std::initializer_list<juce::Component*> {
              &mode, &resolution, &character, &displayRange, &analyzerRange,
              &output, &gainScale, &tilt, &speed,
-             &autoGain, &phaseInvert, &piano, &freeze, &analyzerPre,
+             &autoGain, &bypass, &phaseInvert, &piano, &freeze, &analyzerPre,
              &btnA, &btnB, &btnCopy, &btnPaste, &btnMatchSrc, &btnMatchRef, &btnMatch,
              &btnMatchOv, &btnEditRemote,
              &btnLearn, &btnUndo, &btnRedo, &instanceLabel, &presetBox, &instanceBox,
@@ -276,6 +278,7 @@ void BottomBar::resized()
     displayRange.setBounds (mid.removeFromLeft (80));
     mid.removeFromLeft (6);
     autoGain.setBounds (mid.removeFromLeft (84));
+    bypass.setBounds (mid.removeFromLeft (58));
     phaseInvert.setBounds (mid.removeFromLeft (32));
     piano.setBounds (mid.removeFromLeft (56));
     freeze.setBounds (mid.removeFromLeft (60));

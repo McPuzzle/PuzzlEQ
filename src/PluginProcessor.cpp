@@ -136,6 +136,30 @@ void PuzzlEqAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     }
     midi.clear();
 
+    const int n = buffer.getNumSamples();
+    auto main = getBusBuffer (buffer, true, 0);
+    float* l = main.getWritePointer (0);
+    float* r = main.getNumChannels() > 1 ? main.getWritePointer (1) : l;
+
+    float inL = 0.0f, inR = 0.0f;
+    for (int i = 0; i < n; ++i)
+    {
+        inL = std::max (inL, std::abs (l[i]));
+        inR = std::max (inR, std::abs (r[i]));
+    }
+    inputPeakL = inL;
+    inputPeakR = inR;
+
+    if (auto* bp = apvts.getRawParameterValue (puzzleq::pid::bypass);
+        bp != nullptr && bp->load() > 0.5f)
+    {
+        for (int ch = getMainBusNumInputChannels(); ch < getMainBusNumOutputChannels(); ++ch)
+            buffer.clear (ch, 0, n);
+        outputPeakL = inL;
+        outputPeakR = inR;
+        return;
+    }
+
     // Read APVTS on the audio thread without overwriting uiBands. The editor
     // owns uiBands so a host that is slow to echo parameters cannot blank the
     // handles on the next buffer.
@@ -150,10 +174,6 @@ void PuzzlEqAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     engine.setGlobal (g);
     engine.setSidechainListen (sidechainListen.load(), selectedBandForListen);
 
-    auto main = getBusBuffer (buffer, true, 0);
-    float* l = main.getWritePointer (0);
-    float* r = main.getNumChannels() > 1 ? main.getWritePointer (1) : l;
-
     const float* scL = nullptr;
     const float* scR = nullptr;
     if (auto* scBus = getBus (true, 1); scBus != nullptr && scBus->isEnabled())
@@ -162,17 +182,6 @@ void PuzzlEqAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
         scL = sc.getReadPointer (0);
         scR = sc.getNumChannels() > 1 ? sc.getReadPointer (1) : scL;
     }
-
-    const int n = buffer.getNumSamples();
-
-    float inL = 0.0f, inR = 0.0f;
-    for (int i = 0; i < n; ++i)
-    {
-        inL = std::max (inL, std::abs (l[i]));
-        inR = std::max (inR, std::abs (r[i]));
-    }
-    inputPeakL = inL;
-    inputPeakR = inR;
 
     engine.process (l, r, scL, scR, n);
     setLatencySamples (engine.latencySamples());
@@ -316,6 +325,11 @@ void PuzzlEqAudioProcessor::beginMidiLearn (const juce::String& paramId)
 void PuzzlEqAudioProcessor::cancelMidiLearn()
 {
     midiLearnId.clear();
+}
+
+juce::AudioProcessorParameter* PuzzlEqAudioProcessor::getBypassParameter() const
+{
+    return apvts.getParameter (puzzleq::pid::bypass);
 }
 
 juce::AudioProcessorEditor* PuzzlEqAudioProcessor::createEditor()

@@ -511,7 +511,7 @@ void EqDisplay::mouseDrag (const juce::MouseEvent& e)
             auto st = target.uiBands[static_cast<size_t> (dragBand)];
             st.active = true;
             st.q = juce::jlimit (puzzleq::kMinQ, puzzleq::kMaxQ,
-                                 dragStartQ * std::pow (2.0f, e.getDistanceFromDragStartY() * -0.01f));
+                                 dragStartQ * std::pow (2.0f, static_cast<float> (e.getDistanceFromDragStartY()) * -0.01f));
             target.uiBands[static_cast<size_t> (dragBand)] = st;
         }
         return;
@@ -520,7 +520,7 @@ void EqDisplay::mouseDrag (const juce::MouseEvent& e)
     const float newHz = std::max (8.0f, xToHz (e.position.x));
     const float ratio = newHz / dragOriginHz;
     const float dDb = yToDb (e.position.y) - dragOriginDb;
-    const float qMul = qGesture ? std::pow (2.0f, e.getDistanceFromDragStartY() * -0.01f) : 1.0f;
+    const float qMul = qGesture ? std::pow (2.0f, static_cast<float> (e.getDistanceFromDragStartY()) * -0.01f) : 1.0f;
     for (const auto& o : dragOrigins)
     {
         auto st = target.uiBands[static_cast<size_t> (o.index)];
