@@ -4,7 +4,6 @@
 #include "state/ParameterLayout.h"
 #include "dsp/EqEngine.h"
 #include <array>
-#include <mutex>
 #include <vector>
 
 class PuzzlEqAudioProcessor : public juce::AudioProcessor
@@ -102,13 +101,10 @@ private:
     juce::ValueTree stateA, stateB;
     bool showingA = true;
     int currentProgram = 0;
-    mutable std::mutex specLock;
-    std::vector<float> publishedPost;
     juce::String midiLearnId;
     std::array<int, 128> ccMap {}; // CC -> parameter index, -1 none
     double suppressHostPullUntilMs = 0.0;
     int lastReportedLatency = -1;
-    std::vector<float> specScratch;
 
     static std::mutex registryMutex;
     static std::vector<PuzzlEqAudioProcessor*> registry;

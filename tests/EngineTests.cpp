@@ -285,3 +285,47 @@ TEST_CASE ("idle engine is cheaper than a 24-band linear-phase path")
     const auto tBusy = std::chrono::steady_clock::now() - t1;
     REQUIRE (tIdle < tBusy);
 }
+
+TEST_CASE ("process stays finite across sample rates and odd block sizes")
+{
+    const float rates[] = { 44100.0f, 48000.0f, 96000.0f };
+    const int blocks[] = { 1, 32, 63, 64, 65, 128, 511, 512, 1024, 2048, 4096 };
+    for (float sr : rates)
+    {
+        EqEngine e;
+        e.prepare (sr, 512);
+        std::array<BandState, kMaxBands> bands {};
+        bands[0].active = true;
+        bands[0].enabled = true;
+        bands[0].shape = FilterShape::Bell;
+        bands[0].frequencyHz = 1000.0f;
+        bands[0].gainDb = 6.0f;
+        bands[0].q = 1.2f;
+        bands[1].active = true;
+        bands[1].enabled = true;
+        bands[1].shape = FilterShape::LowCut;
+        bands[1].frequencyHz = 80.0f;
+        bands[1].slopeDbOct = 24.0f;
+        e.setBands (bands);
+        GlobalState g;
+        g.autoGain = true;
+        e.setGlobal (g);
+
+        for (int n : blocks)
+        {
+            std::vector<float> L (static_cast<size_t> (n)), R (static_cast<size_t> (n));
+            for (int i = 0; i < n; ++i)
+            {
+                const float x = 0.2f * std::sin (2.0f * 3.14159265f * 1000.0f * static_cast<float> (i) / sr);
+                L[static_cast<size_t> (i)] = R[static_cast<size_t> (i)] = x;
+            }
+            e.process (L.data(), R.data(), nullptr, nullptr, n);
+            for (int i = 0; i < n; ++i)
+            {
+                REQUIRE (std::isfinite (L[static_cast<size_t> (i)]));
+                REQUIRE (std::isfinite (R[static_cast<size_t> (i)]));
+                REQUIRE (std::abs (L[static_cast<size_t> (i)]) < 8.0f);
+            }
+        }
+    }
+}

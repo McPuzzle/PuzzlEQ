@@ -35,6 +35,7 @@ public:
     int maxBlockSize() const noexcept { return maxBlock; }
 
     SpectrumAnalyzer& analyzer() noexcept { return spectrum; }
+    const SpectrumAnalyzer& analyzer() const noexcept { return spectrum; }
     EqMatch& matcher() noexcept { return match; }
     const EqMatch& matcher() const noexcept { return match; }
     LinearPhaseEq& linearPhase() noexcept { return linear; }

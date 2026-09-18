@@ -46,7 +46,6 @@ void PuzzlEqAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBloc
     lastReportedLatency = engine.latencySamples();
     setLatencySamples (lastReportedLatency);
     outputPeakL = outputPeakR = 0.0f;
-    specScratch.reserve (4096);
 }
 
 void PuzzlEqAudioProcessor::releaseResources()
@@ -225,12 +224,6 @@ void PuzzlEqAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce
     }
     outputPeakL = pkL;
     outputPeakR = pkR;
-
-    if (engine.analyzer().consume (specScratch, false))
-    {
-        std::lock_guard<std::mutex> lock (specLock);
-        publishedPost.swap (specScratch);
-    }
 }
 
 void PuzzlEqAudioProcessor::processBlockBypassed (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midi)
@@ -319,8 +312,7 @@ void PuzzlEqAudioProcessor::copyActiveBands()
 
 void PuzzlEqAudioProcessor::copyPublishedSpectrum (std::vector<float>& dest) const
 {
-    std::lock_guard<std::mutex> lock (specLock);
-    dest = publishedPost;
+    engine.analyzer().copyCurrent (dest, false);
 }
 
 int PuzzlEqAudioProcessor::getNumPrograms()
