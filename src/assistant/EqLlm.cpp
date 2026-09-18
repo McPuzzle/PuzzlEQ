@@ -19,7 +19,7 @@ juce::String httpPost (const juce::String& url,
                        int timeoutMs = 12000)
 {
     juce::URL u (url);
-    const auto opts = juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inPostBody)
+    const auto opts = juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inPostData)
                           .withExtraHeaders (extraHeaders)
                           .withConnectionTimeoutMs (timeoutMs)
                           .withHttpRequestCmd ("POST");
