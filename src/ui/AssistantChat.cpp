@@ -146,15 +146,18 @@ void AssistantChat::resized()
         ollamaUrl.setBounds (r.removeFromTop (22));
         r.removeFromTop (8);
     }
-    auto chips = r.removeFromTop (24);
-    const int cw = juce::jmax (40, (chips.getWidth() - 12) / 4);
-    chipLows.setBounds (chips.removeFromLeft (cw));
-    chips.removeFromLeft (4);
-    chipMud.setBounds (chips.removeFromLeft (cw));
-    chips.removeFromLeft (4);
-    chipPresence.setBounds (chips.removeFromLeft (cw));
-    chips.removeFromLeft (4);
-    chipAir.setBounds (chips);
+    auto chips = r.removeFromTop (52);
+    auto row1 = chips.removeFromTop (24);
+    chips.removeFromTop (4);
+    auto row2 = chips.removeFromTop (24);
+    const int cw1 = juce::jmax (40, (row1.getWidth() - 4) / 2);
+    chipLows.setBounds (row1.removeFromLeft (cw1));
+    row1.removeFromLeft (4);
+    chipMud.setBounds (row1);
+    const int cw2 = juce::jmax (40, (row2.getWidth() - 4) / 2);
+    chipPresence.setBounds (row2.removeFromLeft (cw2));
+    row2.removeFromLeft (4);
+    chipAir.setBounds (row2);
     r.removeFromTop (8);
     auto row = r.removeFromBottom (28);
     send.setBounds (row.removeFromRight (64));
