@@ -1,6 +1,8 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 #include "assistant/EqChat.h"
+#include "assistant/EqAnalyze.h"
+#include "dsp/SpectrumAnalyzer.h"
 
 using Catch::Matchers::WithinAbs;
 using namespace puzzleq;
@@ -136,4 +138,92 @@ TEST_CASE ("generic cut at a frequency")
     REQUIRE (plan.ops[0].band.shape == FilterShape::Bell);
     REQUIRE (plan.ops[0].band.gainDb < 0.0f);
     REQUIRE_THAT (plan.ops[0].band.frequencyHz, WithinAbs (250.0f, 0.1f));
+}
+
+TEST_CASE ("Hebrew cut 3 dB at 500 Hz")
+{
+    const auto plan = parseEqChat ("\xd7\xaa\xd7\x95\xd7\xa8\xd7\x99\xd7\x93 \xd7\x91 500 \xd7\x94\xd7\xa8\xd7\xa5 3 \xd7\x93\xd7\x99\xd7\x91\xd7\x99");
+    REQUIRE (plan.understood);
+    REQUIRE (plan.ops.size() == 1);
+    REQUIRE (plan.ops[0].kind == ChatOp::Kind::AddOrUpdate);
+    REQUIRE (plan.ops[0].band.shape == FilterShape::Bell);
+    REQUIRE_THAT (plan.ops[0].band.frequencyHz, WithinAbs (500.0f, 0.1f));
+    REQUIRE_THAT (plan.ops[0].band.gainDb, WithinAbs (-3.0f, 0.15f));
+}
+
+TEST_CASE ("Hebrew make the band narrower")
+{
+    ChatContext ctx;
+    ctx.selectedBand = 2;
+    ctx.bands[2].active = true;
+    ctx.bands[2].q = 1.20f;
+    ctx.bands[2].frequencyHz = 1000.0f;
+    const auto plan = parseEqChat (
+        "\xd7\xaa\xd7\xa2\xd7\xa9\xd7\x94 \xd7\x90\xd7\xaa \xd7\x94\xd7\x91\xd7\xa8\xd7\xa0\xd7\x93 \xd7\xa6\xd7\xa8 \xd7\x99\xd7\x95\xd7\xaa\xd7\xa8",
+        ctx);
+    REQUIRE (plan.understood);
+    REQUIRE (plan.ops.size() == 1);
+    REQUIRE (plan.ops[0].kind == ChatOp::Kind::TweakQ);
+    REQUIRE (plan.ops[0].targetBand == 2);
+    REQUIRE (plan.ops[0].qMul > 1.12f);
+    REQUIRE (plan.ops[0].qMul < 1.45f);
+}
+
+TEST_CASE ("English make the band narrower")
+{
+    ChatContext ctx;
+    ctx.selectedBand = 0;
+    ctx.bands[0].active = true;
+    ctx.bands[0].q = 1.0f;
+    const auto plan = parseEqChat ("make the band narrower", ctx);
+    REQUIRE (plan.understood);
+    REQUIRE (plan.ops[0].kind == ChatOp::Kind::TweakQ);
+    REQUIRE (plan.ops[0].qMul > 1.1f);
+}
+
+TEST_CASE ("Hebrew add a bit of highs around 8 kHz")
+{
+    const auto plan = parseEqChat (
+        "\xd7\xaa\xd7\x95\xd7\xa1\xd7\x99\xd7\xa3 \xd7\xa7\xd7\xa6\xd7\xaa \xd7\x92\xd7\x91\xd7\x95\xd7\x94\xd7\x99\xd7\x9d \xd7\x9e\xd7\x90\xd7\x99\xd7\x96\xd7\x95\xd7\xa8 \xd7\x94 8 \xd7\x90\xd7\x9c\xd7\xa3");
+    REQUIRE (plan.understood);
+    REQUIRE (plan.ops.size() == 1);
+    REQUIRE (plan.ops[0].band.shape == FilterShape::HighShelf);
+    REQUIRE_THAT (plan.ops[0].band.frequencyHz, WithinAbs (8000.0f, 1.0f));
+    REQUIRE (plan.ops[0].band.gainDb >= 2.0f);
+    REQUIRE (plan.ops[0].band.gainDb <= 3.2f);
+}
+
+TEST_CASE ("Hebrew narrow dynamic bell at analyzed harsh peak")
+{
+    ChatContext ctx;
+    ctx.spectrum.ok = true;
+    ctx.spectrum.harshHz = 4120.0f;
+    ctx.spectrum.harshMagDb = -9.0f;
+    ctx.spectrum.summary = "Harsh vocal pocket: 4.12 kHz";
+    const auto plan = parseEqChat (
+        "\xd7\xaa\xd7\x95\xd7\xa1\xd7\x99\xd7\xa3 \xd7\x91\xd7\x9c \xd7\x93\xd7\x99\xd7\xa0\xd7\x90\xd7\x9e\xd7\x99 \xd7\xa6\xd7\xa8 \xd7\x91\xd7\x90\xd7\x99\xd7\x96\xd7\x95\xd7\xa8 \xd7\x94\xd7\x9b\xd7\x99 Harsh \xd7\x94\xd7\x95\xd7\x95\xd7\xa7\xd7\x90\xd7\x9c \xd7\x94\xd7\x96\xd7\x94",
+        ctx);
+    REQUIRE (plan.understood);
+    REQUIRE (plan.ops.size() == 1);
+    REQUIRE (plan.ops[0].band.shape == FilterShape::Bell);
+    REQUIRE_THAT (plan.ops[0].band.frequencyHz, WithinAbs (4120.0f, 1.0f));
+    REQUIRE (plan.ops[0].band.q >= 4.0f);
+    REQUIRE (plan.ops[0].band.dynRangeDb < -1.0f);
+}
+
+TEST_CASE ("spectrum analyze finds a planted harsh peak")
+{
+    const int fft = 4096;
+    const float sr = 48000.0f;
+    std::vector<float> mag (static_cast<size_t> (fft / 2 + 1), -36.0f);
+    const int bin = SpectrumAnalyzer::hzToBin (3500.0f, fft, sr);
+    mag[static_cast<size_t> (bin - 1)] = -18.0f;
+    mag[static_cast<size_t> (bin)] = -8.0f;
+    mag[static_cast<size_t> (bin + 1)] = -19.0f;
+    const auto report = analyzeSpectrum (mag, mag, sr, fft);
+    REQUIRE (report.ok);
+    REQUIRE (report.harshHz > 3000.0f);
+    REQUIRE (report.harshHz < 4200.0f);
+    REQUIRE (report.harshProminenceDb > 2.0f);
+    REQUIRE_FALSE (report.summary.empty());
 }

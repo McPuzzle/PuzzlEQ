@@ -21,7 +21,7 @@ PuzzlEqAudioProcessorEditor::PuzzlEqAudioProcessorEditor (PuzzlEqAudioProcessor&
     chat.setVisible (false);
 
     help.setText ("PuzzlEQ  ·  Click the graph (or the big button) to add a band   Drag to move   Wheel Q/slope   Shift-drag sketch   Cmd-click Spectrum Grab   Alt-click solo   F fullscreen   Chat for EQ moves\n"
-                  "Chat examples: roll off the low end, clean mud, boost presence, add air. Local phrases work offline; optional free Ollama / Groq / Gemini in Chat > API.",
+                  "Chat examples: roll off the low end, clean mud, make the band narrower. Hebrew works too. The chat analyzes the live spectrum before it answers. Optional free Ollama / Groq / Gemini in Chat > API.",
                   juce::dontSendNotification);
     help.setJustificationType (juce::Justification::centredLeft);
     help.setColour (juce::Label::backgroundColourId, juce::Colour (0xee0c0e13));
@@ -38,6 +38,7 @@ PuzzlEqAudioProcessorEditor::PuzzlEqAudioProcessorEditor (PuzzlEqAudioProcessor&
         if (band >= 0)
             display.setSelectedBand (band);
     };
+    chat.getSelectedBand = [this] { return display.selectedBand(); };
     bottom.onToggleFullscreen = [this]
     {
         fullscreen = ! fullscreen;

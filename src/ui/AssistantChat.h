@@ -20,6 +20,7 @@ public:
     void focusInput() { input.grabKeyboardFocus(); }
 
     std::function<void (int lastBand)> onApplied;
+    std::function<int()> getSelectedBand;
 
 private:
     void textEditorReturnKeyPressed (juce::TextEditor&) override;

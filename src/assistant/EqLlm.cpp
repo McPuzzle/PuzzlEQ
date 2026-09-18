@@ -221,15 +221,22 @@ static LlmResult tryGemini (const std::string& user, const LlmSettings& settings
     return r;
 }
 
-LlmResult requestEqLlm (const std::string& userText, const LlmSettings& settings)
+LlmResult requestEqLlm (const std::string& userText,
+                        const LlmSettings& settings,
+                        const std::string& analysis)
 {
-    auto ollama = tryOllama (userText, settings);
+    std::string packed = userText;
+    if (! analysis.empty())
+        packed = "Live FFT analysis (trust these frequencies over guesses):\n"
+                 + analysis + "\n\nUser request (Hebrew or English):\n" + userText;
+
+    auto ollama = tryOllama (packed, settings);
     if (ollama.ok)
         return ollama;
-    auto groq = tryGroq (userText, settings);
+    auto groq = tryGroq (packed, settings);
     if (groq.ok)
         return groq;
-    auto gemini = tryGemini (userText, settings);
+    auto gemini = tryGemini (packed, settings);
     if (gemini.ok)
         return gemini;
 

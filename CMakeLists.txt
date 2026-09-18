@@ -91,6 +91,7 @@ set(PUZZLEQ_SOURCES
     src/ui/BottomBar.cpp
     src/ui/AssistantChat.cpp
     src/assistant/EqChat.cpp
+    src/assistant/EqAnalyze.cpp
     src/assistant/EqLlm.cpp)
 
 target_sources(PuzzlEQ PRIVATE ${PUZZLEQ_SOURCES})
@@ -115,7 +116,7 @@ target_link_libraries(PuzzlEQ
         juce::juce_recommended_warning_flags)
 
 if(MSVC)
-    target_compile_options(PuzzlEQ PRIVATE /W4 /permissive-)
+    target_compile_options(PuzzlEQ PRIVATE /W4 /permissive- /utf-8)
 else()
     target_compile_options(PuzzlEQ PRIVATE -Wall -Wextra)
 endif()
@@ -134,6 +135,7 @@ add_executable(PuzzlEQTests
     tests/EngineTests.cpp
     tests/ChatTests.cpp
     src/assistant/EqChat.cpp
+    src/assistant/EqAnalyze.cpp
     src/dsp/FilterDesign.cpp
     src/dsp/Fft.cpp
     src/dsp/DynamicEngine.cpp
@@ -146,6 +148,9 @@ add_executable(PuzzlEQTests
 target_include_directories(PuzzlEQTests PRIVATE src)
 target_link_libraries(PuzzlEQTests PRIVATE Catch2::Catch2WithMain)
 target_compile_features(PuzzlEQTests PRIVATE cxx_std_20)
+if(MSVC)
+    target_compile_options(PuzzlEQTests PRIVATE /utf-8)
+endif()
 
 enable_testing()
 add_test(NAME PuzzlEQTests COMMAND PuzzlEQTests)

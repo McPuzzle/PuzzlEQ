@@ -6,7 +6,7 @@ A premium parametric equalizer plugin. Original DSP and UI. Not a clone of any c
 **Platforms:** macOS, Windows, Linux  
 **License:** AGPLv3 (JUCE commercial license required for closed-source distribution)
 
-## Features (v0.3.9)
+## Features (v0.3.10)
 
 - 24-band parametric EQ: Bell, Notch, High/Low Shelf, High/Low Cut, Band Pass, Tilt Shelf, Flat Tilt, All Pass
 - Analog-matched Zero Latency / Natural Phase via 2× oversampling, Q compensation, and fractional slopes (6–96 dB/oct)
@@ -23,7 +23,7 @@ A premium parametric equalizer plugin. Original DSP and UI. Not a clone of any c
 - Factory presets (vocal, mix bus, master, de-mud, air, telephone, kick, snare, guitar)
 - Instance list with spectrum collision overlay
 - Intelligent solo, sidechain listen, stereo I/O meters, latency readout
-- **EQ Chat:** type “roll off the low end”, “clean mud”, “boost presence”, and similar moves. Built-in phrases work offline with no API key. Optional free models: local [Ollama](https://ollama.com), [Groq](https://console.groq.com) Llama 3.1 8B, or [Gemini](https://aistudio.google.com/apikey) 2.0 Flash (keys stay in `PuzzlEQ/assistant.json`, never in the session). Open with **Chat** or `/`.
+- **EQ Chat (Hebrew + English):** type mix notes and PuzzlEQ writes bands. It always runs a free local FFT analyze first (smoothed mag + peak-hold, 1/3-octave prominence, parabolic peaks) and only then applies the move or asks a free model. Examples: `roll off the low end`, `make the band narrower`, `תוריד ב 500 הרץ 3 דיבי`, `תעשה את הברנד צר יותר`, `תוסיף קצת גבוהים מאיזור ה 8 אלף`, `תוסיף בל דינאמי צר באיזור הכי Harsh הווקאל הזה`. Optional free models: local [Ollama](https://ollama.com), [Groq](https://console.groq.com) Llama 3.1 8B, or [Gemini](https://aistudio.google.com/apikey) 2.0 Flash (keys stay in `PuzzlEQ/assistant.json`). Open with **Chat** or `/`.
 
 ## Install
 

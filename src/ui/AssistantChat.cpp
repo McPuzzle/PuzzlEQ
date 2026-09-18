@@ -1,8 +1,10 @@
 #include "ui/AssistantChat.h"
 #include "ui/PuzzlLookAndFeel.h"
 #include "assistant/EqLlm.h"
+#include "assistant/EqAnalyze.h"
 #include "state/ParameterLayout.h"
 #include "state/Presets.h"
+#include <algorithm>
 
 namespace {
 int firstFree (const std::array<puzzleq::BandState, puzzleq::kMaxBands>& bands)
@@ -34,7 +36,7 @@ AssistantChat::AssistantChat (PuzzlEqAudioProcessor& proc)
 {
     title.setText ("EQ Chat", juce::dontSendNotification);
     title.setFont (juce::FontOptions (16.0f, juce::Font::bold));
-    status.setText ("Local phrases. Optional free Ollama / Groq / Gemini.", juce::dontSendNotification);
+    status.setText ("Analyzes the live spectrum first. Hebrew + English. Optional free Ollama / Groq / Gemini.", juce::dontSendNotification);
     status.setFont (juce::FontOptions (11.0f));
     status.setColour (juce::Label::textColourId, juce::Colour (0xff8b95a8));
 
@@ -42,7 +44,10 @@ AssistantChat::AssistantChat (PuzzlEqAudioProcessor& proc)
     log.setReadOnly (true);
     log.setScrollbarsShown (true);
     log.setFont (juce::FontOptions (13.0f));
-    log.setText ("Ask for an EQ move.\nExamples: roll off the low end, clean mud, boost presence, add air, de-ess.\n");
+    log.setText ("Ask for an EQ move in English or Hebrew.\n"
+                 "Examples: roll off the low end / clean mud / make the band narrower\n"
+                 "HE: \xd7\xaa\xd7\x95\xd7\xa8\xd7\x99\xd7\x93 \xd7\x91 500 \xd7\x94\xd7\xa8\xd7\xa5 3 \xd7\x93\xd7\x99\xd7\x91\xd7\x99"
+                 "  \xc2\xb7  \xd7\xaa\xd7\xa2\xd7\xa9\xd7\x94 \xd7\x90\xd7\xaa \xd7\x94\xd7\x91\xd7\x90\xd7\xa0\xd7\x93 \xd7\xa6\xd7\xa8 \xd7\x99\xd7\x95\xd7\xaa\xd7\xa8\n");
 
     input.setMultiLine (false);
     input.setReturnKeyStartsNewLine (false);
@@ -205,6 +210,29 @@ void AssistantChat::applyPlan (const puzzleq::ChatPlan& plan)
             target.pullStateFromApvts (true);
             continue;
         }
+        if (op.kind == puzzleq::ChatOp::Kind::TweakQ)
+        {
+            int slot = op.targetBand;
+            if (slot < 0 || slot >= puzzleq::kMaxBands
+                || ! target.uiBands[static_cast<size_t> (slot)].active)
+            {
+                slot = -1;
+                for (int i = puzzleq::kMaxBands - 1; i >= 0; --i)
+                    if (target.uiBands[static_cast<size_t> (i)].active)
+                    {
+                        slot = i;
+                        break;
+                    }
+            }
+            if (slot < 0)
+                continue;
+            auto b = target.uiBands[static_cast<size_t> (slot)];
+            b.q = juce::jlimit (puzzleq::kMinQ, puzzleq::kMaxQ, b.q * (op.qMul > 0.05f ? op.qMul : 1.28f));
+            target.uiBands[static_cast<size_t> (slot)] = b;
+            puzzleq::writeBand (target.apvts, slot, b);
+            lastSlot = slot;
+            continue;
+        }
         if (op.kind == puzzleq::ChatOp::Kind::AddOrUpdate)
         {
             int slot = existingSimilar (target.uiBands, op.band);
@@ -233,18 +261,46 @@ void AssistantChat::sendCurrent()
     input.clear();
     appendLine ("You", text, juce::Colour (0xffffc36b));
 
-    auto local = puzzleq::parseEqChat (text.toStdString());
+    puzzleq::ChatContext ctx;
+    ctx.selectedBand = getSelectedBand ? getSelectedBand() : -1;
+    ctx.bands = processor.editTarget().uiBands;
+
+    auto& an = processor.engine.analyzer();
+    std::vector<float> mag, peaks, postPeaks;
+    if (! an.copyCurrent (mag, true))
+        an.copyCurrent (mag, false);
+    if (! an.copyPeaks (peaks, true))
+        an.copyPeaks (peaks, false);
+    if (an.copyPeaks (postPeaks, false) && postPeaks.size() == peaks.size())
+        for (size_t i = 0; i < peaks.size(); ++i)
+            peaks[i] = std::max (peaks[i], postPeaks[i]);
+    ctx.spectrum = puzzleq::analyzeSpectrum (mag, peaks, an.sampleRate(), an.fftSize());
+
+    if (ctx.spectrum.ok)
+    {
+        status.setText ("Analyzed live FFT " + juce::String (ctx.spectrum.fftSize)
+                            + "  ·  harsh " + juce::String (ctx.spectrum.harshHz, 0) + " Hz",
+                        juce::dontSendNotification);
+        appendLine ("Analyze", juce::String (ctx.spectrum.summary), juce::Colour (0xff8b95a8));
+    }
+    else
+    {
+        status.setText ("No spectrum yet — play audio for a full analyze.", juce::dontSendNotification);
+    }
+
+    auto local = puzzleq::parseEqChat (text.toStdString(), ctx);
     if (local.understood)
     {
         applyPlan (local);
         appendLine ("PuzzlEQ", juce::String (local.reply), juce::Colour (0xff4de3c1));
-        status.setText ("Local (no API)", juce::dontSendNotification);
+        if (! ctx.spectrum.ok)
+            status.setText ("Local (no API)", juce::dontSendNotification);
         return;
     }
 
     busy = true;
-    status.setText ("Asking a free model...", juce::dontSendNotification);
-    appendLine ("PuzzlEQ", "Not a built-in phrase. Trying a free model...", juce::Colour (0xff8b95a8));
+    status.setText ("Analyzed. Asking a free model...", juce::dontSendNotification);
+    appendLine ("PuzzlEQ", "Not a built-in phrase. Trying a free model with the spectrum report...", juce::Colour (0xff8b95a8));
 
     puzzleq::LlmSettings settings = puzzleq::loadLlmSettings();
     settings.groqKey = groqKey.getText().toStdString();
@@ -257,9 +313,10 @@ void AssistantChat::sendCurrent()
         worker->join();
 
     const auto prompt = text.toStdString();
-    worker = std::make_unique<std::thread> ([this, prompt, settings, local]()
+    const auto analysis = ctx.spectrum.summary;
+    worker = std::make_unique<std::thread> ([this, prompt, settings, local, analysis]()
     {
-        const auto llm = puzzleq::requestEqLlm (prompt, settings);
+        const auto llm = puzzleq::requestEqLlm (prompt, settings, analysis);
         juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<AssistantChat> (this), llm, local]()
         {
             if (safe == nullptr || ! safe->alive.load())

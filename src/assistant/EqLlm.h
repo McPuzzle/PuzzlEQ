@@ -24,6 +24,8 @@ LlmSettings loadLlmSettings();
 void saveLlmSettings (const LlmSettings&);
 
 // Tries Ollama (no key), then Groq, then Gemini. All free-tier endpoints.
-LlmResult requestEqLlm (const std::string& userText, const LlmSettings& settings);
+LlmResult requestEqLlm (const std::string& userText,
+                        const LlmSettings& settings,
+                        const std::string& analysis = {});
 
 } // namespace puzzleq
