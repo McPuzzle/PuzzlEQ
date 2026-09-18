@@ -6,6 +6,7 @@
 #include "ui/EqDisplay.h"
 #include "ui/BandInspector.h"
 #include "ui/BottomBar.h"
+#include "ui/AssistantChat.h"
 
 class PuzzlEqAudioProcessorEditor : public juce::AudioProcessorEditor
 {
@@ -24,8 +25,10 @@ private:
     EqDisplay display;
     BandInspector inspector;
     BottomBar bottom;
+    AssistantChat chat;
     bool fullscreen = false;
     bool helpVisible = false;
+    bool chatVisible = false;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PuzzlEqAudioProcessorEditor)
 };

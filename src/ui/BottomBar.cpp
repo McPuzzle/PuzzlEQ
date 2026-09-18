@@ -162,6 +162,8 @@ BottomBar::BottomBar (PuzzlEqAudioProcessor& proc)
     btnFull.onClick = [this] { if (onToggleFullscreen) onToggleFullscreen(); };
     btnHelp.setClickingTogglesState (true);
     btnHelp.onClick = [this] { if (onToggleHelp) onToggleHelp(); };
+    btnChat.setClickingTogglesState (true);
+    btnChat.onClick = [this] { if (onToggleChat) onToggleChat(); };
     btnListen.setClickingTogglesState (true);
     btnListen.onClick = [this]
     {
@@ -175,7 +177,7 @@ BottomBar::BottomBar (PuzzlEqAudioProcessor& proc)
              &btnA, &btnB, &btnCopy, &btnPaste, &btnMatchSrc, &btnMatchRef, &btnMatch,
              &btnMatchOv, &btnEditRemote,
              &btnLearn, &btnUndo, &btnRedo, &instanceLabel, &presetBox, &instanceBox,
-             &btnFull, &btnHelp, &btnListen, &latencyLabel })
+             &btnFull, &btnHelp, &btnListen, &btnChat, &latencyLabel })
         addAndMakeVisible (c);
 
     instanceLabel.setJustificationType (juce::Justification::centredLeft);
@@ -283,6 +285,8 @@ void BottomBar::resized()
     piano.setBounds (mid.removeFromLeft (56));
     freeze.setBounds (mid.removeFromLeft (60));
     analyzerPre.setBounds (mid.removeFromLeft (44));
+    mid.removeFromLeft (8);
+    btnChat.setBounds (mid.removeFromLeft (52));
 
     r.removeFromTop (4);
     auto bot = r;

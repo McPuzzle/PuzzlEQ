@@ -88,7 +88,10 @@ set(PUZZLEQ_SOURCES
     src/ui/PuzzlLookAndFeel.cpp
     src/ui/EqDisplay.cpp
     src/ui/BandInspector.cpp
-    src/ui/BottomBar.cpp)
+    src/ui/BottomBar.cpp
+    src/ui/AssistantChat.cpp
+    src/assistant/EqChat.cpp
+    src/assistant/EqLlm.cpp)
 
 target_sources(PuzzlEQ PRIVATE ${PUZZLEQ_SOURCES})
 
@@ -129,6 +132,8 @@ FetchContent_MakeAvailable(Catch2)
 add_executable(PuzzlEQTests
     tests/FilterDesignTests.cpp
     tests/EngineTests.cpp
+    tests/ChatTests.cpp
+    src/assistant/EqChat.cpp
     src/dsp/FilterDesign.cpp
     src/dsp/Fft.cpp
     src/dsp/DynamicEngine.cpp

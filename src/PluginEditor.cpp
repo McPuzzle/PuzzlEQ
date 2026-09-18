@@ -4,7 +4,8 @@ PuzzlEqAudioProcessorEditor::PuzzlEqAudioProcessorEditor (PuzzlEqAudioProcessor&
     : juce::AudioProcessorEditor (p),
       display (p),
       inspector (p),
-      bottom (p)
+      bottom (p),
+      chat (p)
 {
     setLookAndFeel (&lnf);
     setOpaque (true);
@@ -16,9 +17,11 @@ PuzzlEqAudioProcessorEditor::PuzzlEqAudioProcessorEditor (PuzzlEqAudioProcessor&
     addAndMakeVisible (display);
     addAndMakeVisible (inspector);
     addAndMakeVisible (bottom);
+    addAndMakeVisible (chat);
+    chat.setVisible (false);
 
-    help.setText ("PuzzlEQ  ·  Click the graph (or the big button) to add a band   Drag to move   Wheel Q/slope   Shift-drag sketch   Cmd-click Spectrum Grab   Alt-click solo   F fullscreen\n"
-                  "Edit Inst writes to the overlay instance. Match Ov fits this spectrum to the overlay. Cap Src / Cap Ref / Match for residual EQ Match.",
+    help.setText ("PuzzlEQ  ·  Click the graph (or the big button) to add a band   Drag to move   Wheel Q/slope   Shift-drag sketch   Cmd-click Spectrum Grab   Alt-click solo   F fullscreen   Chat for EQ moves\n"
+                  "Chat examples: roll off the low end, clean mud, boost presence, add air. Local phrases work offline; optional free Ollama / Groq / Gemini in Chat > API.",
                   juce::dontSendNotification);
     help.setJustificationType (juce::Justification::centredLeft);
     help.setColour (juce::Label::backgroundColourId, juce::Colour (0xee0c0e13));
@@ -29,6 +32,11 @@ PuzzlEqAudioProcessorEditor::PuzzlEqAudioProcessorEditor (PuzzlEqAudioProcessor&
     display.onSelectionChanged = [this]
     {
         inspector.setBand (display.selectedBand());
+    };
+    chat.onApplied = [this] (int band)
+    {
+        if (band >= 0)
+            display.setSelectedBand (band);
     };
     bottom.onToggleFullscreen = [this]
     {
@@ -41,6 +49,14 @@ PuzzlEqAudioProcessorEditor::PuzzlEqAudioProcessorEditor (PuzzlEqAudioProcessor&
     {
         helpVisible = ! helpVisible;
         help.setVisible (helpVisible);
+    };
+    bottom.onToggleChat = [this]
+    {
+        chatVisible = ! chatVisible;
+        chat.setVisible (chatVisible);
+        if (chatVisible)
+            chat.focusInput();
+        resized();
     };
 
     setResizable (true, true);
@@ -76,6 +92,12 @@ void PuzzlEqAudioProcessorEditor::resized()
     r.removeFromTop (6);
     auto footer = r.removeFromBottom (fullscreen ? 118 : 118);
     r.removeFromBottom (8);
+    if (chatVisible)
+    {
+        auto side = r.removeFromRight (300);
+        r.removeFromRight (8);
+        chat.setBounds (side);
+    }
     if (! fullscreen)
     {
         auto inspect = r.removeFromBottom (150);
@@ -100,6 +122,16 @@ bool PuzzlEqAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
     {
         helpVisible = ! helpVisible;
         help.setVisible (helpVisible);
+        return true;
+    }
+    if (key.getTextCharacter() == '/' && ! key.getModifiers().isAnyModifierKeyDown())
+    {
+        chatVisible = ! chatVisible;
+        chat.setVisible (chatVisible);
+        bottom.setChatOpen (chatVisible);
+        if (chatVisible)
+            chat.focusInput();
+        resized();
         return true;
     }
     return display.keyPressed (key);

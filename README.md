@@ -6,7 +6,7 @@ A premium parametric equalizer plugin. Original DSP and UI. Not a clone of any c
 **Platforms:** macOS, Windows, Linux  
 **License:** AGPLv3 (JUCE commercial license required for closed-source distribution)
 
-## Features (v0.3)
+## Features (v0.3.9)
 
 - 24-band parametric EQ: Bell, Notch, High/Low Shelf, High/Low Cut, Band Pass, Tilt Shelf, Flat Tilt, All Pass
 - Analog-matched Zero Latency / Natural Phase via 2× oversampling, Q compensation, and fractional slopes (6–96 dB/oct)
@@ -23,6 +23,7 @@ A premium parametric equalizer plugin. Original DSP and UI. Not a clone of any c
 - Factory presets (vocal, mix bus, master, de-mud, air, telephone, kick, snare, guitar)
 - Instance list with spectrum collision overlay
 - Intelligent solo, sidechain listen, stereo I/O meters, latency readout
+- **EQ Chat:** type “roll off the low end”, “clean mud”, “boost presence”, and similar moves. Built-in phrases work offline with no API key. Optional free models: local [Ollama](https://ollama.com), [Groq](https://console.groq.com) Llama 3.1 8B, or [Gemini](https://aistudio.google.com/apikey) 2.0 Flash (keys stay in `PuzzlEQ/assistant.json`, never in the session). Open with **Chat** or `/`.
 
 ## Install
 

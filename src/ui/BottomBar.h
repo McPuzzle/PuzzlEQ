@@ -14,6 +14,8 @@ public:
 
     std::function<void()> onToggleFullscreen;
     std::function<void()> onToggleHelp;
+    std::function<void()> onToggleChat;
+    void setChatOpen (bool on) { btnChat.setToggleState (on, juce::dontSendNotification); }
 
 private:
     void timerCallback() override;
@@ -29,6 +31,7 @@ private:
     juce::TextButton btnMatchOv { "Match Ov" }, btnEditRemote { "Edit Inst" };
     juce::TextButton btnLearn { "MIDI Learn" }, btnUndo { "Undo" }, btnRedo { "Redo" };
     juce::TextButton btnFull { "Full" }, btnHelp { "?" }, btnListen { "SC Listen" };
+    juce::TextButton btnChat { "Chat" };
     juce::Label instanceLabel, latencyLabel;
 
     using ComboAtt = juce::AudioProcessorValueTreeState::ComboBoxAttachment;
